@@ -1,23 +1,38 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
+# ═══════════════════════════════════════════════════════════════
+# ملفات مستثناة من Git لبوت أوكامي 🐺
+# ═══════════════════════════════════════════════════════════════
+
+# === قاعدة البيانات ===
+*.db
+*.sqlite3
+
+# === ملف الإعدادات (يحتوي على التوكن!) ===
+config.env
+
+# === الملفات المؤقتة ===
+/tmp/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# === بيئة بايثون الافتراضية ===
+venv/
+.venv/
+env/
+
+# === ملفات IDE ===
 .vscode/
-#Cache folder
-.alcache/
-#Symbols folder
-.alpackages/
-#Snapshots folder
-.snapshots/
-#Testing Output folder
-.output/
-#Extension App-file
-*.app
-#Rapid Application Development File
-rad.json
-#Translation Base-file
-*.g.xlf
-#License-files
-*.bclicense
-*.flf
-#Test results file
-TestResults.xml
+.idea/
+*.swp
+*.swo
+
+# === ملفات النظام ===
+.DS_Store
+Thumbs.db
+
+# === ملفات التصدير ===
+okami_export.json
+
+# === Replit ===
+.replit.nix.bak
