@@ -51,6 +51,11 @@ export class OkamiQueue {
             import { NotificationService } from '../services/notification.service.js';
             await NotificationService.notifyFollowers(task.mangaId, task.number, postUrl);
 
+            // 7. إرسال تنبيه للمطور إذا كان هو من بدأ العملية
+            if (task.adminFbId) {
+                console.log(`[ADMIN NOTIFY] User ${task.adminFbId}: Done publishing ${manga.title}. Temporary data deleted.`);
+            }
+
             console.log(`Successfully published Chapter ${task.number} of ${manga.title} and cleaned up files.`);
             
             // تأخير عشوائي لتجنب الحظر (Anti-Ban)
