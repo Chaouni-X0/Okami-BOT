@@ -12,8 +12,11 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "arabic-reshaper": "^1.1.0",
     "axios": "^1.18.1",
     "better-sqlite3": "^12.11.1",
+    "bidi-js": "^1.0.3",
+    "canvas": "^2.11.2",
     "cheerio": "^1.2.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
