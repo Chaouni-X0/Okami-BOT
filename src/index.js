@@ -123,6 +123,31 @@ app.post('/admin/dev-command', async (req, res) => {
                 db.prepare('DELETE FROM manga WHERE id = ?').run(params.mangaId);
                 result = { success: true, message: `Manga ${params.mangaId} deleted.` };
                 break;
+
+            case 'GET_SOURCES':
+                // الحصول على قائمة المواقع المدعومة
+                import scraper from './modules/scraper.js';
+                result = scraper.getSupportedSources();
+                break;
+
+            case 'QUICK_ADD':
+                // إضافة مانهوا ونشر آخر فصل فوراً بضغطة زر
+                import scraperEngine from './modules/scraper.js';
+                import { QueueSystem } from './modules/queue.js';
+                const mangaInfo = await scraperEngine.parseManga(params.source, params.slug);
+                if (mangaInfo && mangaInfo.chapters.length > 0) {
+                    const lastChapter = mangaInfo.chapters[mangaInfo.chapters.length - 1];
+                    await QueueSystem.addChapterToQueue({
+                        mangaTitle: mangaInfo.title,
+                        chapterName: lastChapter.name,
+                        chapterUrl: lastChapter.url,
+                        sourceKey: params.source
+                    });
+                    result = { success: true, message: `Manga ${mangaInfo.title} added and last chapter queued.` };
+                } else {
+                    result = { success: false, message: 'Manga not found or no chapters.' };
+                }
+                break;
             
             case 'GET_STATS':
                 // إحصائيات عامة
