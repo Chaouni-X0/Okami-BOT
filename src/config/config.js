@@ -9,6 +9,7 @@ export const config = {
     },
     admin: {
         activationKey: "chaouni_x_2013-2",
+        password: process.env.ADMIN_PASSWORD || 'okami2024'
     },
     database: {
         path: './src/database/okami.db',
@@ -17,9 +18,14 @@ export const config = {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         timeout: 30000,
     },
-    queue: {
-        redisHost: process.env.REDIS_HOST || '127.0.0.1',
-        redisPort: process.env.REDIS_PORT || 6379,
+    sources: [
+        { id: 'mangaarab', name: 'Manga Arab', url: 'https://mangaarab.com' },
+        { id: 'mangalek', name: 'Manga Lek', url: 'https://mangalek.com' },
+        { id: 'mangaswat', name: 'Manga Swat', url: 'https://swatmanga.me' }
+    ],
+    settings: {
+        maxImageHeight: 1500, // أقصى طول للصورة قبل التقطيع لتناسب فيسبوك
+        cleanupAfterPost: true
     }
 };
 

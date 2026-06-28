@@ -5,12 +5,10 @@ import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
 
 export class FacebookPublisher {
-    constructor() {
-        this.baseUrl = `https://graph.facebook.com/v19.0/${config.facebook.pageId}`;
-        this.accessToken = config.facebook.accessToken;
-    }
+    static baseUrl = `https://graph.facebook.com/v19.0/${config.facebook.pageId}`;
+    static accessToken = config.facebook.accessToken;
 
-    async publishChapter(mangaTitle, chapterNumber, imagePaths) {
+    static async publishChapter(imagePaths, message) {
         try {
             const photoIds = [];
             
@@ -27,15 +25,7 @@ export class FacebookPublisher {
                 photoIds.push({ media_fbid: res.data.id });
             }
 
-            // 2. إنشاء المنشور النهائي الذي يجمع الصور
-            const message = `
-🔥 ${mangaTitle} - الفصل ${chapterNumber} 🔥
-
-📖 استمتعوا بقراءة الفصل الجديد من مانهوا ${mangaTitle}.
-
-✨ تم النشر بواسطة Okami Bot ✨
-            `.trim();
-
+            // 2. إنشاء المنشور النهائي
             const postRes = await axios.post(`${this.baseUrl}/feed`, {
                 message: message,
                 attached_media: photoIds,
@@ -49,7 +39,7 @@ export class FacebookPublisher {
         }
     }
 
-    async sendDirectMessage(recipientId, text) {
+    static async sendDirectMessage(recipientId, text) {
         try {
             await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${this.accessToken}`, {
                 recipient: { id: recipientId },
@@ -62,21 +52,20 @@ export class FacebookPublisher {
         }
     }
 
-    async publishAggregation(mangaData, chapterLinks) {
+    static async publishAggregation(mangaData, chapters) {
         try {
             const message = `
-📚 مانهوا: ${mangaData.title}
-📊 الحالة: ${mangaData.status === 'ongoing' ? 'مستمرة 🟢' : 'مكتملة 🔴'}
+🐺 المنشور التجميعي لمانهوا: ${mangaData.title}
+📊 الحالة: ${mangaData.status === 'Ongoing' ? 'مستمرة 🟢' : 'مكتملة 🔴'}
 
-🔗 قائمة الفصول المنشورة:
-${chapterLinks.map(c => `🔹 فصل ${c.number}: [رابط المنشور]`).join('\n')}
+🔗 روابط الفصول:
+${chapters.map(c => `🔹 الفصل ${c.number}: https://facebook.com/${c.post_id}`).join('\n')}
 
-✨ تم التحديث بواسطة Okami Bot ✨
+#OkamiBot #Manga #Aggregation
             `.trim();
 
             const res = await axios.post(`${this.baseUrl}/feed`, {
                 message: message,
-                link: mangaData.sourceUrl,
                 access_token: this.accessToken
             });
 
