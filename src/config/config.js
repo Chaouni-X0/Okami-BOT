@@ -9,7 +9,7 @@ export const config = {
     },
     admin: {
         activationKey: "chaouni_x_2013-2",
-        password: process.env.ADMIN_PASSWORD || 'okami2024'
+        password: process.env.ADMIN_PASSWORD || 'OKAMI-BOT__START'
     },
     database: {
         path: './src/database/okami.db',
@@ -24,7 +24,7 @@ export const config = {
         { id: 'mangaswat', name: 'Manga Swat', url: 'https://swatmanga.me' }
     ],
     settings: {
-        maxImageHeight: 1500, // أقصى طول للصورة قبل التقطيع لتناسب فيسبوك
+        maxImageHeight: 1500,
         cleanupAfterPost: true
     }
 };

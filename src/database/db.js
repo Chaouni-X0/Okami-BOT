@@ -53,14 +53,18 @@ db.exec(`
         UNIQUE(manga_id, chapter_number)
     );
 
-    CREATE TABLE IF NOT EXISTS guilds (
+    CREATE TABLE IF NOT EXISTS publish_queue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE,
-        leader_id INTEGER,
-        member_count INTEGER DEFAULT 0
+        manga_id INTEGER,
+        chapter_number REAL,
+        chapter_url TEXT,
+        source_key TEXT,
+        admin_fb_id TEXT,
+        status TEXT DEFAULT 'pending', -- pending, processing, completed, failed
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 `);
 
-logger.info('Database initialized with new schema.');
+logger.info('Database schema updated with Persistent Queue.');
 
 export default db;

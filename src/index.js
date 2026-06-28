@@ -3,12 +3,13 @@ import { config } from './config/config.js';
 import db from './database/db.js';
 import { DialogueService } from './services/dialogue.service.js';
 import { FacebookPublisher } from './modules/publisher.js';
+import { QueueSystem } from './modules/queue.js';
 import logger from './utils/logger.js';
 
 const app = express();
 app.use(express.json());
 
-// Webhook لفيسبوك (نقطة دخول الأحداث)
+// Webhook لفيسبوك
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -32,7 +33,6 @@ app.post('/webhook', async (req, res) => {
             const sender_id = webhook_event.sender.id;
 
             if (webhook_event.message && webhook_event.message.text) {
-                // معالجة الرسائل الواردة عبر نظام الحوار (Event-Driven)
                 const responseText = await DialogueService.handleMessage(sender_id, webhook_event.message.text);
                 if (responseText) {
                     await FacebookPublisher.sendDirectMessage(sender_id, responseText);
@@ -45,16 +45,18 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-// إلغاء نظام cron jobs المستمر واستبداله بنقاط دخول (Endpoints) للتحكم اليدوي أو عبر Webhooks
 app.get('/status', (req, res) => {
     res.json({ 
         status: 'online', 
-        project: '🐺 Okami Bot (Event-Driven)', 
-        version: '4.0.0' 
+        project: '🐺 Okami Bot (Persistent Queue Mode)', 
+        version: '4.1.0' 
     });
 });
 
 const PORT = config.port || 3000;
-app.listen(PORT, () => {
-    logger.info(`Okami Bot API running on port ${PORT} in Event-Driven mode`);
+app.listen(PORT, async () => {
+    logger.info(`Okami Bot API running on port ${PORT}`);
+    
+    // استئناف الطابور المحفوظ في قاعدة البيانات عند التشغيل
+    await QueueSystem.resumeQueue();
 });
