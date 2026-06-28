@@ -11,8 +11,6 @@ export class FacebookPublisher {
     static async publishChapter(imagePaths, message) {
         try {
             const photoIds = [];
-            
-            // 1. رفع الصور كـ "Unpublished" للحصول على IDs
             for (const imgPath of imagePaths) {
                 const formData = new FormData();
                 formData.append('source', fs.createReadStream(imgPath));
@@ -25,7 +23,6 @@ export class FacebookPublisher {
                 photoIds.push({ media_fbid: res.data.id });
             }
 
-            // 2. إنشاء المنشور النهائي
             const postRes = await axios.post(`${this.baseUrl}/feed`, {
                 message: message,
                 attached_media: photoIds,
@@ -52,20 +49,30 @@ export class FacebookPublisher {
         }
     }
 
+    /**
+     * نشر منشور تجميعي مع دعم الأجزاء (للأعمال الطويلة)
+     */
     static async publishAggregation(mangaData, chapters) {
         try {
+            const partTitle = mangaData.partNumber ? `(الجزء ${mangaData.partNumber})` : '';
+            const rangeText = `الفصول: من ${mangaData.startChapter} إلى ${mangaData.endChapter}`;
+            
             const message = `
-🐺 المنشور التجميعي لمانهوا: ${mangaData.title}
+🐺 المنشور التجميعي لمانهوا: ${mangaData.title} ${partTitle}
 📊 الحالة: ${mangaData.status === 'Ongoing' ? 'مستمرة 🟢' : 'مكتملة 🔴'}
+📌 ${rangeText}
 
-🔗 روابط الفصول:
-${chapters.map(c => `🔹 الفصل ${c.number}: https://facebook.com/${c.post_id}`).join('\n')}
+🔗 روابط الفصول في هذا الجزء:
+${chapters.map(c => `🔹 الفصل ${c.chapter_number}: https://facebook.com/${c.fb_post_id}`).join('\n')}
 
-#OkamiBot #Manga #Aggregation
+#OkamiBot #Manga #Aggregation #Part${mangaData.partNumber || 1}
             `.trim();
 
+            // ملاحظة: فيسبوك لديه حد لعدد الكلمات، لذا نقوم بتقليص الرسالة إذا كانت طويلة جداً
+            const finalMessage = message.length > 8000 ? message.substring(0, 7900) + "...\n(يتبع في تعليق)" : message;
+
             const res = await axios.post(`${this.baseUrl}/feed`, {
-                message: message,
+                message: finalMessage,
                 access_token: this.accessToken
             });
 

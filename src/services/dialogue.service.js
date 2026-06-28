@@ -57,11 +57,10 @@ export class DialogueService {
             case 'AWAITING_MANGA_NAME':
                 const mangaName = cleanText;
                 const sourceId = state.sourceId;
-                this.userStates.set(fbId, { step: 'ADMIN_MODE' }); // العودة للوضع الرئيسي
+                this.userStates.set(fbId, { step: 'ADMIN_MODE' });
                 
-                // بدء الاستخراج
                 this.startMangaExtraction(fbId, sourceId, mangaName);
-                return `🔍 جاري معالجة "${mangaName}"... سأرسل لك تحديثات فورية.`;
+                return `🔍 جاري معالجة "${mangaName}"... سأقوم بحساب الوقت المتوقع وإرساله لك فوراً.`;
 
             default:
                 return "🐺 أرسل 'مرحبا' للبدء.";
@@ -79,7 +78,6 @@ export class DialogueService {
             const manga = results[0];
             const details = await scraperEngine.getMangaDetails(sourceId, manga.url);
             
-            // حفظ المانهوا
             const mangaId = MemoryService.saveManga({
                 title: details.title,
                 slug: mangaName.toLowerCase().replace(/ /g, '-'),
@@ -89,7 +87,19 @@ export class DialogueService {
                 sourceUrl: manga.url
             }).id;
 
-            await FacebookPublisher.sendDirectMessage(fbId, `✅ تم العثور على "${details.title}". جاري تحميل ونشر ${details.chapters.length} فصل...`);
+            // حساب الوقت المتوقع
+            const chapterCount = details.chapters.length;
+            const totalMinutes = chapterCount * 5;
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            const timeText = hours > 0 ? `${hours} ساعة و ${minutes} دقيقة` : `${minutes} دقيقة`;
+
+            await FacebookPublisher.sendDirectMessage(fbId, 
+                `✅ تم العثور على "${details.title}".\n` +
+                `🔢 عدد الفصول: ${chapterCount}\n` +
+                `⏳ الوقت المتوقع للنشر: ${timeText} (بمعدل فصل كل 5 دقائق).\n\n` +
+                `🚀 بدأ النشر الآن...`
+            );
 
             // إضافة الفصول للطابور
             for (const ch of details.chapters) {
@@ -102,19 +112,9 @@ export class DialogueService {
                 });
             }
 
-            // نشر المنشور التجميعي بعد الانتهاء (هنا كمثال بسيط، يفضل وضعه في نهاية الـ Queue)
-            setTimeout(async () => {
-                const chapters = MemoryService.getPublishedChapters(mangaId);
-                const aggId = await FacebookPublisher.publishAggregation({ title: details.title, status: details.status }, chapters);
-                db.prepare('UPDATE manga SET aggregation_post_id = ? WHERE id = ?').run(aggId, mangaId);
-                await FacebookPublisher.sendDirectMessage(fbId, `🎉 اكتمل النشر! تم إنشاء المنشور التجميعي.\n🔗 ID: ${aggId}`);
-                
-                // تنظيف التخزين
-                MemoryService.cleanupMangaStorage(mangaName.toLowerCase().replace(/ /g, '-'));
-            }, 30000); // تأخير تجريبي
-
         } catch (error) {
             logger.error(`Extraction Error: ${error.message}`);
+            await FacebookPublisher.sendDirectMessage(fbId, `❌ حدث خطأ أثناء معالجة المانهوا: ${error.message}`);
         }
     }
 }

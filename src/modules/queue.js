@@ -11,6 +11,7 @@ export class OkamiQueue {
         this.processor = new ChapterProcessor();
         this.isProcessing = false;
         this.queue = [];
+        this.delayBetweenChapters = 5 * 60 * 1000; // 5 دقائق بالميلي ثانية
     }
 
     async addToQueue(job) {
@@ -19,9 +20,20 @@ export class OkamiQueue {
         if (!this.isProcessing) this.processNext();
     }
 
+    /**
+     * حساب الوقت المتبقي لانتهاء الطابور الحالي
+     */
+    getEstimatedTime() {
+        const totalMinutes = this.queue.length * 5;
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return { hours, minutes, totalMinutes };
+    }
+
     async processNext() {
         if (this.queue.length === 0) {
             this.isProcessing = false;
+            logger.info("Queue is empty. Sleeping...");
             return;
         }
 
@@ -32,7 +44,7 @@ export class OkamiQueue {
             const manga = db.prepare('SELECT * FROM manga WHERE id = ?').get(task.mangaId);
             if (!manga) throw new Error(`Manga with ID ${task.mangaId} not found.`);
 
-            logger.info(`Processing Chapter ${task.number} of ${manga.title}...`);
+            logger.info(`[SCHEDULED] Processing Chapter ${task.number} of ${manga.title}...`);
             
             // 1. استخراج صور الفصل
             const images = await scraperEngine.parseChapterImages(manga.source_site_key || task.sourceKey, task.url || task.chapterUrl);
@@ -46,6 +58,7 @@ export class OkamiQueue {
 🐺 فصل جديد من: ${manga.title}
 🔢 رقم الفصل: ${task.number}
 📖 استمتعوا بالقراءة!
+
 #OkamiBot #Manga #Manhwa
             `;
             const postId = await FacebookPublisher.publishChapter(processed.images, postText);
@@ -53,22 +66,46 @@ export class OkamiQueue {
             // 4. تحديث قاعدة البيانات
             MemoryService.markChapterAsPublished(task.mangaId, task.number, postId);
             
-            // 5. تنظيف الملفات المؤقتة فوراً لتوفير مساحة
+            // 5. تنظيف الملفات المؤقتة فوراً
             this.processor.cleanup(processed.chapterDir);
 
-            // 6. إشعار المطور بالنجاح
-            if (task.adminFbId) {
-                await NotificationService.sendFacebookMessage(task.adminFbId, `✅ تم بنجاح نشر الفصل ${task.number} من "${manga.title}".`);
-            }
+            // 6. التحقق من الحاجة لإنشاء/تحديث منشور تجميعي
+            await this.handleAggregation(task.mangaId);
 
-            logger.info(`Successfully published and cleaned up Chapter ${task.number} of ${manga.title}.`);
+            logger.info(`Successfully published Chapter ${task.number}. Waiting 5 minutes for next...`);
             
-            // تأخير بسيط لتجنب الحظر
-            setTimeout(() => this.processNext(), 5000);
+            // الجدولة الذكية: الانتظار 5 دقائق قبل الفصل التالي
+            setTimeout(() => this.processNext(), this.delayBetweenChapters);
 
         } catch (error) {
             logger.error(`Error processing task: ${error.message}`);
-            setTimeout(() => this.processNext(), 10000);
+            // في حالة الخطأ، انتظر دقيقة ثم حاول التالي
+            setTimeout(() => this.processNext(), 60000);
+        }
+    }
+
+    async handleAggregation(mangaId) {
+        const manga = db.prepare('SELECT * FROM manga WHERE id = ?').get(mangaId);
+        const publishedChapters = MemoryService.getPublishedChapters(mangaId);
+        
+        // تقسيم الفصول إلى مجموعات (كل 100 فصل في منشور تجميعي)
+        const chunkSize = 100;
+        for (let i = 0; i < publishedChapters.length; i += chunkSize) {
+            const chunk = publishedChapters.slice(i, i + chunkSize);
+            const partNumber = Math.floor(i / chunkSize) + 1;
+            
+            const startChapter = chunk[0].chapter_number;
+            const endChapter = chunk[chunk.length - 1].chapter_number;
+            
+            const aggId = await FacebookPublisher.publishAggregation(
+                { ...manga, partNumber, startChapter, endChapter }, 
+                chunk
+            );
+            
+            // حفظ الـ ID (يمكن تطوير هذا لحفظ مصفوفة من الـ IDs)
+            if (partNumber === 1) {
+                db.prepare('UPDATE manga SET aggregation_post_id = ? WHERE id = ?').run(aggId, mangaId);
+            }
         }
     }
 }
