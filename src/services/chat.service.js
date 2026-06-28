@@ -1,5 +1,6 @@
 import scraperEngine from '../modules/scraper.js';
 import { QueueSystem } from '../modules/queue.js';
+import { UserService } from './user.service.js';
 import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
 
@@ -22,8 +23,17 @@ export class ChatService {
                     this.sessions.set(fbId, { step: 'AWAITING_PASSWORD' });
                     return "🔐 يرجى إدخال كلمة السر الخاصة بالمطور:";
                 } else if (text === '2') {
-                    this.sessions.set(fbId, { step: 'READER_MENU' });
-                    return "📖 أهلاً بك أيها القارئ! يمكنك الآن استعراض الأعمال أو متابعة مانهوا معينة.\nماذا تريد أن تفعل؟";
+                    const profile = await UserService.getProfile(fbId);
+                    this.sessions.set(fbId, { step: 'START' });
+                    return `📖 أهلاً بك أيها القارئ!
+👤 ملفك الشخصي:
+⭐ المستوى: ${profile.level}
+🔥 الـ Streak: ${profile.streak}
+🏆 اللقب: ${profile.rank_title}
+💰 النقاط: ${profile.points}
+🛡️ القبيلة: ${profile.guild_name}
+
+يمكنك متابعة القراءة لزيادة نقاطك ومستواك! 🐺`;
                 }
                 return "❌ اختيار غير صحيح. يرجى اختيار 1 أو 2:";
 

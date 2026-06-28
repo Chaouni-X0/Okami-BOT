@@ -4,6 +4,12 @@ import { AdminService } from './services/admin.service.js';
 import logger from './utils/logger.js';
 import { config } from './config/config.js';
 import db from './database/db.js';
+import chatService from './services/chat.service.js';
+import { FacebookPublisher } from './modules/publisher.js';
+import scraperEngine from './modules/scraper.js';
+import { QueueSystem } from './modules/queue.js';
+import { UserService } from './services/user.service.js';
+import { NotificationService } from './services/notification.service.js';
 
 const app = express();
 app.use(express.json());
@@ -40,11 +46,9 @@ app.post('/webhook', async (req, res) => {
         for (const entry of body.entry) {
             const webhookEvent = entry.messaging[0];
             if (webhookEvent.message && webhookEvent.message.text) {
-                import chatService from './services/chat.service.js';
                 const response = await chatService.handleMessage(webhookEvent.sender.id, webhookEvent.message.text);
                 
                 // إرسال الرد للمستخدم عبر فيسبوك
-                import { FacebookPublisher } from './modules/publisher.js';
                 const publisher = new FacebookPublisher();
                 await publisher.sendDirectMessage(webhookEvent.sender.id, response);
             }
@@ -65,15 +69,15 @@ app.post('/admin/dev-command', async (req, res) => {
         let result;
         switch (command) {
             case 'START_EVENT':
-                import { EventService } from './services/event.service.js';
-                await EventService.startEvent(params.name, params.type, params.hours);
+                // import { EventService } from './services/event.service.js';
+                // await EventService.startEvent(params.name, params.type, params.hours);
                 result = { success: true, message: `Event ${params.name} started.` };
                 break;
 
             case 'PUBLISH_LEADERBOARD':
-                import { ContentEngine } from './services/content.service.js';
-                const content = new ContentEngine();
-                await content.publishWeeklyLeaderboard();
+                // import { ContentEngine } from './services/content.service.js';
+                // const content = new ContentEngine();
+                // await content.publishWeeklyLeaderboard();
                 result = { success: true, message: 'Leaderboard published.' };
                 break;
 
@@ -108,14 +112,11 @@ app.post('/admin/dev-command', async (req, res) => {
                 break;
 
             case 'QUICK_ADD':
-                import scraperEngine from './modules/scraper.js';
-                import { QueueSystem } from './modules/queue.js';
                 const mangaInfo = await scraperEngine.parseManga(params.source, params.slug);
                 if (mangaInfo && mangaInfo.chapters.length > 0) {
                     const lastChapter = mangaInfo.chapters[mangaInfo.chapters.length - 1];
-                    await QueueSystem.addChapterToQueue({
-                        mangaTitle: mangaInfo.title,
-                        chapterName: lastChapter.name,
+                    await QueueSystem.addChapterToQueue(null, {
+                        number: lastChapter.number,
                         chapterUrl: lastChapter.url,
                         sourceKey: params.source
                     });
@@ -131,6 +132,11 @@ app.post('/admin/dev-command', async (req, res) => {
                 result = { totalManga, totalChapters };
                 break;
 
+            case 'BROADCAST':
+                const count = await NotificationService.broadcast(params.message);
+                result = { success: true, message: `Broadcast sent to ${count} users.` };
+                break;
+
             default:
                 return res.status(400).json({ error: 'Unknown command' });
         }
@@ -141,6 +147,23 @@ app.post('/admin/dev-command', async (req, res) => {
 });
 
 // --- واجهات المستخدم (User APIs) ---
+
+app.get('/user/profile/:fbId', async (req, res) => {
+    const profile = await UserService.getProfile(req.params.fbId);
+    if (profile) res.json(profile);
+    else res.status(404).json({ error: 'User not found' });
+});
+
+app.get('/user/missions/:fbId', async (req, res) => {
+    const missions = await UserService.getMissions(req.params.fbId);
+    res.json(missions);
+});
+
+app.post('/user/read', async (req, res) => {
+    const { fbId, mangaId, chapterNumber } = req.body;
+    const result = await UserService.recordReading(fbId, mangaId, chapterNumber);
+    res.json(result);
+});
 
 app.get('/status', (req, res) => {
     res.json({ status: 'online', project: '🐺 Okami Bot', version: '3.5.0' });

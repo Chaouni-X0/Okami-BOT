@@ -176,9 +176,13 @@ export const initDb = () => {
     `).run();
 
     // ربط المستخدم بالقبيلة
-    db.prepare(`
-        ALTER TABLE users ADD COLUMN guild_id INTEGER;
-    `).run();
+    try {
+        db.prepare(`
+            ALTER TABLE users ADD COLUMN guild_id INTEGER;
+        `).run();
+    } catch (e) {
+        // العمود موجود بالفعل، لا داعي للقلق
+    }
 
     // نظام التصويت الآلي (Auto Polls)
     db.prepare(`
@@ -221,7 +225,7 @@ export const initDb = () => {
             value TEXT
         )
     `).run();
-    db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES ("points_multiplier", "1")').run();
+    db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('points_multiplier', '1')").run();
 };
 
 export default db;

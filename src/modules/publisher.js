@@ -2,6 +2,7 @@ import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
 import { config } from '../config/config.js';
+import logger from '../utils/logger.js';
 
 export class FacebookPublisher {
     constructor() {
@@ -43,8 +44,21 @@ export class FacebookPublisher {
 
             return postRes.data.id;
         } catch (error) {
-            console.error('Facebook publishing error:', error.response?.data || error.message);
+            logger.error(`Facebook publishing error: ${error.response?.data?.error?.message || error.message}`);
             throw error;
+        }
+    }
+
+    async sendDirectMessage(recipientId, text) {
+        try {
+            await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${this.accessToken}`, {
+                recipient: { id: recipientId },
+                message: { text: text }
+            });
+            return true;
+        } catch (error) {
+            logger.error(`Failed to send direct message: ${error.response?.data?.error?.message || error.message}`);
+            return false;
         }
     }
 
@@ -68,7 +82,7 @@ ${chapterLinks.map(c => `🔹 فصل ${c.number}: [رابط المنشور]`).jo
 
             return res.data.id;
         } catch (error) {
-            console.error('Facebook aggregation error:', error.response?.data || error.message);
+            logger.error(`Facebook aggregation error: ${error.response?.data?.error?.message || error.message}`);
             return null;
         }
     }

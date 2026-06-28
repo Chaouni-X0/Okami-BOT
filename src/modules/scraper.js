@@ -43,7 +43,7 @@ export class ScraperEngine {
                 baseUrl: 'https://mangaarab.com',
                 selectors: {
                     title: 'h1',
-                    chapterList: '.chapters-list li',
+                    chapterList: '.chapters-list a',
                     images: '#reader-images img'
                 }
             },
@@ -96,34 +96,80 @@ export class ScraperEngine {
         }
     }
 
-    async parseManga(sourceKey, mangaSlug) {
-        const source = this.sources[sourceKey];
-        if (!source) throw new Error(`Source ${sourceKey} not supported.`);
+    identifySource(url) {
+        try {
+            const hostname = new URL(url).hostname;
+            for (const [key, source] of Object.entries(this.sources)) {
+                if (hostname.includes(new URL(source.baseUrl).hostname.replace('www.', ''))) {
+                    return key;
+                }
+            }
+        } catch (e) {}
+        return null;
+    }
 
-        const url = `${source.baseUrl}/manga/${mangaSlug}`;
+    extractChapterNumber(name) {
+        const match = name.match(/(\d+(\.\d+)?)/);
+        return match ? parseFloat(match[1]) : 0;
+    }
+
+    async parseManga(sourceKeyOrUrl, mangaSlug = null) {
+        let sourceKey = sourceKeyOrUrl;
+        let url;
+
+        if (sourceKeyOrUrl.startsWith('http')) {
+            sourceKey = this.identifySource(sourceKeyOrUrl);
+            url = sourceKeyOrUrl;
+        } else {
+            const source = this.sources[sourceKey];
+            if (!source) throw new Error(`Source ${sourceKey} not supported.`);
+            url = `${source.baseUrl}/manga/${mangaSlug}`;
+        }
+
+        if (!sourceKey) throw new Error(`Could not identify source for ${sourceKeyOrUrl}`);
+        const source = this.sources[sourceKey];
+
         const html = await this.fetchHtml(url);
         if (!html) return null;
 
         const $ = cheerio.load(html);
-        const title = $(source.selectors.title).text().trim();
+        const title = $(source.selectors.title).text().trim() || $('title').text().trim();
         const chapters = [];
 
         $(source.selectors.chapterList).each((i, el) => {
-            const link = $(el).find('a').attr('href');
-            const name = $(el).find('a').text().trim();
-            if (link) chapters.push({ name, url: link });
+            const $el = $(el);
+            let link = $el.attr('href') || $el.find('a').attr('href');
+            let name = $el.text().trim();
+            
+            if (link) {
+                const isChapterLink = link.includes('/chapter/') || link.includes('/chapters/') || /\/(\d+(\.\d+)?)\/?$/.test(link);
+                if (isChapterLink) {
+                    chapters.push({ 
+                        name, 
+                        url: link.startsWith('http') ? link : `${source.baseUrl}${link}`,
+                        number: this.extractChapterNumber(name)
+                    });
+                }
+            }
         });
 
         return {
             title,
-            slug: mangaSlug,
+            slug: mangaSlug || url.split('/').filter(Boolean).pop(),
             sourceKey,
+            sourceUrl: url,
             chapters: chapters.reverse()
         };
     }
 
     async parseChapterImages(sourceKey, chapterUrl) {
         const source = this.sources[sourceKey];
+        if (!source) {
+            const identifiedKey = this.identifySource(chapterUrl);
+            if (!identifiedKey) return [];
+            return this.parseChapterImages(identifiedKey, chapterUrl);
+        }
+
         const html = await this.fetchHtml(chapterUrl);
         if (!html) return [];
 
@@ -131,8 +177,8 @@ export class ScraperEngine {
         const images = [];
 
         $(source.selectors.images).each((i, el) => {
-            const imgUrl = $(el).attr('src') || $(el).attr('data-src');
-            if (imgUrl) images.push(imgUrl.trim());
+            const imgUrl = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('data-lazy-src');
+            if (imgUrl && !imgUrl.includes('logo')) images.push(imgUrl.trim());
         });
 
         return images;

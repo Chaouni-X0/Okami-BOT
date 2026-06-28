@@ -1,13 +1,15 @@
-import { ScraperEngine } from '../modules/scraper.js';
+import scraperEngine from '../modules/scraper.js';
 import { MemoryService } from './memory.service.js';
-import { OkamiQueue } from '../modules/queue.js';
+import { QueueSystem } from '../modules/queue.js';
 import { config } from '../config/config.js';
 import nodeCron from 'node-cron';
+import logger from '../utils/logger.js';
+import db from '../database/db.js';
 
 export class AdminService {
     constructor() {
-        this.scraper = new ScraperEngine();
-        this.queue = new OkamiQueue();
+        this.scraper = scraperEngine;
+        this.queue = QueueSystem;
     }
 
     async startNewProject(activationKey, siteUrl) {
@@ -15,17 +17,19 @@ export class AdminService {
             throw new Error('Invalid activation key!');
         }
 
-        console.log(`Starting new project from: ${siteUrl}`);
+        logger.info(`Starting new project from: ${siteUrl}`);
         
         // 1. استخراج بيانات المانهوا
         const mangaData = await this.scraper.parseManga(siteUrl);
         if (!mangaData) throw new Error('Could not parse manga data.');
 
         // 2. حفظ في قاعدة البيانات
-        const { id: mangaId } = MemoryService.saveManga({
+        const result = MemoryService.saveManga({
             ...mangaData,
-            sourceSite: new URL(siteUrl).hostname
+            sourceSite: new URL(siteUrl).hostname,
+            sourceUrl: siteUrl
         });
+        const mangaId = result.id;
 
         // 3. إضافة الفصول للطابور
         for (const chapter of mangaData.chapters) {
@@ -34,35 +38,45 @@ export class AdminService {
                 chapterNumber: chapter.number,
                 chapterUrl: chapter.url
             });
-            await this.queue.addToQueue(mangaId, chapter);
+            await this.queue.addToQueue(mangaId, {
+                number: chapter.number,
+                chapterUrl: chapter.url,
+                sourceKey: mangaData.sourceKey
+            });
         }
 
         return { success: true, mangaId, title: mangaData.title };
     }
 
-    // نظام التحديث التلقائي (يفحص كل ساعة)
     initAutoUpdate() {
         nodeCron.schedule('0 * * * *', async () => {
-            console.log('Running auto-update check...');
-            import db from '../database/db.js';
+            logger.info('Running auto-update check...');
             const activeManga = db.prepare("SELECT * FROM manga WHERE status = 'ongoing'").all();
 
             for (const manga of activeManga) {
-                const latestData = await this.scraper.parseManga(manga.source_url);
-                if (latestData) {
-                    for (const chapter of latestData.chapters) {
-                        const exists = db.prepare('SELECT id FROM chapters WHERE manga_id = ? AND chapter_number = ?')
-                            .get(manga.id, chapter.number);
-                        
-                        if (!exists) {
-                            MemoryService.saveChapter({
-                                mangaId: manga.id,
-                                chapterNumber: chapter.number,
-                                chapterUrl: chapter.url
-                            });
-                            await this.queue.addToQueue(manga.id, chapter);
+                try {
+                    const latestData = await this.scraper.parseManga(manga.source_url);
+                    if (latestData) {
+                        for (const chapter of latestData.chapters) {
+                            const exists = db.prepare('SELECT id FROM chapters WHERE manga_id = ? AND chapter_number = ?')
+                                .get(manga.id, chapter.number);
+                            
+                            if (!exists) {
+                                MemoryService.saveChapter({
+                                    mangaId: manga.id,
+                                    chapterNumber: chapter.number,
+                                    chapterUrl: chapter.url
+                                });
+                                await this.queue.addToQueue(manga.id, {
+                                    number: chapter.number,
+                                    chapterUrl: chapter.url,
+                                    sourceKey: manga.source_site_key || latestData.sourceKey
+                                });
+                            }
                         }
                     }
+                } catch (error) {
+                    logger.error(`Auto-update error for ${manga.title}: ${error.message}`);
                 }
             }
         });

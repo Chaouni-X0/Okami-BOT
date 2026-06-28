@@ -55,4 +55,19 @@ export class NotificationService {
             throw new Error(`FB Send API Error: ${error.response?.data?.error?.message || error.message}`);
         }
     }
+
+    static async broadcast(message) {
+        const users = db.prepare('SELECT fb_id FROM users').all();
+        let successCount = 0;
+        
+        for (const user of users) {
+            try {
+                await this.sendFacebookMessage(user.fb_id, message);
+                successCount++;
+            } catch (error) {
+                logger.error(`Broadcast failed for ${user.fb_id}: ${error.message}`);
+            }
+        }
+        return successCount;
+    }
 }
