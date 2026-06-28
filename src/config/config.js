@@ -1,5 +1,10 @@
 import dotenv from 'dotenv';
+import path from 'path';
 dotenv.config();
+
+// تحديد مسار التخزين الدائم (Persistent Storage)
+// في Render، سنقوم بربط هذا المسار بـ Persistent Disk
+const DATA_DIR = process.env.DATA_DIR || './data';
 
 export const config = {
     facebook: {
@@ -12,7 +17,7 @@ export const config = {
         password: process.env.ADMIN_PASSWORD || 'OKAMI-BOT__START'
     },
     database: {
-        path: './src/database/okami.db',
+        path: path.join(DATA_DIR, 'okami.db'),
     },
     scraping: {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -25,7 +30,8 @@ export const config = {
     ],
     settings: {
         maxImageHeight: 1500,
-        cleanupAfterPost: true
+        cleanupAfterPost: true,
+        tempDir: path.join(DATA_DIR, 'temp')
     }
 };
 

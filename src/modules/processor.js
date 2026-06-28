@@ -6,13 +6,10 @@ import { config } from '../config/config.js';
 
 export class ChapterProcessor {
     constructor() {
-        this.tempDir = path.resolve('./src/temp');
+        this.tempDir = config.settings.tempDir;
         if (!fs.existsSync(this.tempDir)) fs.mkdirSync(this.tempDir, { recursive: true });
     }
 
-    /**
-     * تقطيع صورة مانهوا طويلة إلى أجزاء أصغر تناسب فيسبوك
-     */
     async sliceImage(inputBuffer, outputDir, index) {
         try {
             const image = sharp(inputBuffer);
@@ -61,27 +58,21 @@ export class ChapterProcessor {
         for (let i = 0; i < imageUrls.length; i++) {
             try {
                 const imgUrl = imageUrls[i];
-                
-                // تحميل الصورة
                 const response = await axios({
                     url: imgUrl,
                     responseType: 'arraybuffer',
                     headers: { 'User-Agent': config.scraping.userAgent }
                 });
 
-                // تقطيع ومعالجة الصورة
                 const parts = await this.sliceImage(response.data, chapterDir, i);
                 processedImages.push(...parts);
 
             } catch (error) {
-                console.error(`Failed to process image ${i} in chapter ${chapterNumber}:`, error.message);
+                console.error(`Failed to process image ${i}:`, error.message);
             }
         }
 
-        return {
-            chapterDir,
-            images: processedImages
-        };
+        return { chapterDir, images: processedImages };
     }
 
     cleanup(dirPath) {

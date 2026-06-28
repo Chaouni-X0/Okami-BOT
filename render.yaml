@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: okami-bot
+    env: docker
+    plan: free
+    region: ohio
+    healthCheckPath: /status
+    envVars:
+      - key: DATA_DIR
+        value: /app/data
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: FB_ACCESS_TOKEN
+        sync: false
+      - key: FB_PAGE_ID
+        sync: false
+      - key: FB_VERIFY_TOKEN
+        sync: false
+    disk:
+      name: okami-data
+      mountPath: /app/data
+      sizeGB: 1
