@@ -18,7 +18,6 @@ app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 process.on('uncaughtException', (error) => {
     logger.error(`[CRITICAL] Uncaught Exception: ${error.message}`);
     logger.error(error.stack);
-    // Keep alive on non-fatal errors, but log everything
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -135,7 +134,7 @@ app.post('/api/command', async (req, res) => {
     }
 });
 
-// --- Webhook ---
+// --- Webhook Verification (GET) ---
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -145,6 +144,7 @@ app.get('/webhook', (req, res) => {
             logger.info('Webhook Verified Successfully');
             res.status(200).send(challenge);
         } else {
+            logger.warn('Webhook verification failed - invalid token');
             res.sendStatus(403);
         }
     } else {
@@ -152,26 +152,85 @@ app.get('/webhook', (req, res) => {
     }
 });
 
+// --- Webhook Event Receiver (POST) ---
 app.post('/webhook', (req, res) => {
     const body = req.body;
-    if (body.object === 'page') {
-        res.status(200).send('EVENT_RECEIVED');
-        (async () => {
-            for (const entry of body.entry) {
-                try {
-                    if (!entry.messaging) continue;
-                    const webhook_event = entry.messaging[0];
-                    const sender_id = webhook_event.sender.id;
-                    if (webhook_event.message?.text) {
-                        const responseText = await DialogueService.handleMessage(sender_id, webhook_event.message.text);
-                        if (responseText) await FacebookPublisher.sendDirectMessage(sender_id, responseText);
-                    }
-                } catch (error) {
-                    logger.error(`[Webhook Entry Error]: ${error.message}`);
+    
+    if (body.object !== 'page') {
+        return res.sendStatus(404);
+    }
+
+    // Respond immediately to Facebook (required within 20 seconds)
+    res.status(200).send('EVENT_RECEIVED');
+
+    // Process events asynchronously
+    (async () => {
+        for (const entry of body.entry) {
+            try {
+                if (!entry.messaging || entry.messaging.length === 0) continue;
+                
+                const webhook_event = entry.messaging[0];
+                
+                // Skip non-message events (delivery receipts, read receipts, etc.)
+                if (!webhook_event.message) continue;
+                
+                // Skip echo messages (messages sent by the bot itself)
+                if (webhook_event.message.is_echo) {
+                    logger.debug('[Webhook] Skipping echo message');
+                    continue;
                 }
+                
+                // Skip messages without text
+                if (!webhook_event.message.text) {
+                    logger.debug('[Webhook] Skipping message without text');
+                    continue;
+                }
+                
+                const sender_id = webhook_event.sender?.id;
+                const recipient_id = webhook_event.recipient?.id;
+                
+                // Validate sender
+                if (!sender_id) {
+                    logger.warn('[Webhook] Message without sender ID');
+                    continue;
+                }
+                
+                // Skip messages from the page itself (prevents loops)
+                if (sender_id === config.facebook.pageId) {
+                    logger.debug('[Webhook] Skipping message from page itself');
+                    continue;
+                }
+                
+                const messageText = webhook_event.message.text;
+                
+                logger.info(`[Webhook] Processing message from ${sender_id}: "${messageText.substring(0, 50)}"`);
+                
+                // Get response from dialogue service
+                const responseText = await DialogueService.handleMessage(sender_id, messageText);
+                
+                if (responseText) {
+                    // Send response back to user
+                    const sent = await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                    if (sent) {
+                        logger.info(`[Webhook] Response sent to ${sender_id}`);
+                    } else {
+                        logger.error(`[Webhook] Failed to send response to ${sender_id}`);
+                    }
+                } else {
+                    logger.warn(`[Webhook] No response generated for message from ${sender_id}`);
+                }
+                
+            } catch (error) {
+                logger.error(`[Webhook Entry Error]: ${error.message}`);
+                logger.error(error.stack);
             }
-        })();
-    } else res.sendStatus(404);
+        }
+    })();
+});
+
+// --- Health Check ---
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // --- Server Boot ---
