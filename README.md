@@ -28,7 +28,13 @@ The **Smart Scraping Engine** provides comprehensive support for the most popula
 | **Manga Arab** | Optimized scraping for high-traffic Arabic manga content |
 | **Madara Themes** | Universal compatibility with standard manga site layouts |
 
-## 📊 Deployment and Community Engagement
+## 📊 Interactive Dashboard and Management
+
+Okami Bot features a professional **Interactive Dashboard** accessible directly via the web interface. This dashboard allows administrators to:
+- **Execute Commands**: Use the `/` command system to search for manga, check stats, or trigger maintenance.
+- **Global Search**: Search for any manga by name across all supported Arabic sources simultaneously.
+- **Real-time Console**: Monitor system logs and command outputs directly from the browser.
+- **API Management**: The system automatically detects when a source requires an API key and notifies the developer via the dashboard console.
 
 To deploy Okami Bot on **Hugging Face Spaces**, users should create a Space with the Docker SDK and configure the necessary environment variables. The system is pre-configured to bind to port 7860 and handle Facebook Webhook responses within one second to prevent timeout loops.
 

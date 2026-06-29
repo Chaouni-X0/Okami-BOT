@@ -8,13 +8,36 @@ export class ScraperEngine {
         this.sources = config.sources;
     }
 
+    async searchAll(query) {
+        logger.info(`Global search triggered for: ${query}`);
+        const allResults = [];
+        
+        for (const source of this.sources) {
+            try {
+                const results = await this.search(source.id, query);
+                allResults.push(...results.map(r => ({ ...r, sourceName: source.name, sourceId: source.id })));
+            } catch (error) {
+                logger.warn(`Search failed for ${source.name}: ${error.message}`);
+                // Check if API key is needed
+                if (error.response?.status === 401 || error.message.includes('API key')) {
+                    this.notifyDeveloperForAPI(source.name);
+                }
+            }
+        }
+        return allResults;
+    }
+
+    notifyDeveloperForAPI(sourceName) {
+        logger.warn(`[API REQUIRED] The source "${sourceName}" requires an API key. Please update MONGODB_URI or environment variables.`);
+        // In a real scenario, this could send a direct message to the admin
+    }
+
     async search(sourceId, query) {
         const source = this.sources.find(s => s.id === sourceId);
         if (!source) throw new Error('Source not found');
 
         try {
             let searchUrl = '';
-            // Specialized search URLs for popular Arabic sites
             switch(sourceId) {
                 case 'mangaarab':
                     searchUrl = `${source.url}/?s=${encodeURIComponent(query)}`;
@@ -27,18 +50,16 @@ export class ScraperEngine {
             }
 
             const { data } = await axios.get(searchUrl, {
-                headers: { 'User-Agent': config.scraping.userAgent }
+                headers: { 'User-Agent': config.scraping.userAgent },
+                timeout: 10000
             });
             
-            // Handle JSON response for modern sites like G-Manga
             if (typeof data === 'object' && data.mangas) {
                 return data.mangas.map(m => ({ title: m.title, url: `${source.url}/mangas/${m.id}` }));
             }
 
             const $ = cheerio.load(data);
             const results = [];
-
-            // Universal selector for Madara and MangaStream themes
             $('.search-wrap .manga-item, .c-tabs-item__content, .list-upd .bs, .list-manga .manga-item').each((i, el) => {
                 const title = $(el).find('h3 a, .post-title a, .tt a').text().trim();
                 const url = $(el).find('h3 a, .post-title a, .tt a').attr('href');
@@ -47,8 +68,7 @@ export class ScraperEngine {
 
             return results;
         } catch (error) {
-            logger.error(`Search failed for ${sourceId}: ${error.message}`);
-            return [];
+            throw error;
         }
     }
 

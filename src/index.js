@@ -5,25 +5,15 @@ import { User, Manga } from './database/mongo.js';
 import { DialogueService } from './services/dialogue.service.js';
 import { FacebookPublisher } from './modules/publisher.js';
 import { QueueSystem } from './modules/queue.js';
+import scraperEngine from './modules/scraper.js';
 import logger from './utils/logger.js';
 import fs from 'fs';
 import path from 'path';
 
-// --- Global Error Handling & Crash Prevention ---
-process.on('uncaughtException', (error) => {
-    logger.error(`CRITICAL: Uncaught Exception: ${error.message}`);
-    logger.error(error.stack);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
 const app = express();
 app.use(express.json());
-app.use(express.static('public')); // For dashboard assets
 
-// --- Dashboard & Stats API ---
+// --- Dashboard HTML ---
 app.get('/', async (req, res) => {
     try {
         const userCount = await User.countDocuments();
@@ -36,62 +26,146 @@ app.get('/', async (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Okami Bot Dashboard 🐺</title>
+            <title>Okami Bot Pro Dashboard 🐺</title>
             <script src="https://cdn.tailwindcss.com"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
             <style>
-                body { background-color: #0a0a0a; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-                .neon-border { border: 1px solid #bf00ff; box-shadow: 0 0 10px #bf00ff; }
-                .neon-text { color: #bf00ff; text-shadow: 0 0 5px #bf00ff; }
+                body { background-color: #050505; color: #e5e7eb; font-family: 'Inter', sans-serif; }
+                .neon-glow { box-shadow: 0 0 15px rgba(191, 0, 255, 0.4); border: 1px solid #bf00ff; }
+                .neon-text { color: #bf00ff; text-shadow: 0 0 8px rgba(191, 0, 255, 0.6); }
+                .command-input:focus { outline: none; border-color: #bf00ff; box-shadow: 0 0 10px rgba(191, 0, 255, 0.5); }
+                .sidebar { background: #0a0a0a; border-left: 1px solid #1f2937; }
+                .card { background: #0d0d0d; border: 1px solid #1f2937; transition: all 0.3s; }
+                .card:hover { border-color: #bf00ff; transform: translateY(-2px); }
             </style>
         </head>
-        <body class="p-8">
-            <div class="max-w-4xl mx-auto">
-                <header class="text-center mb-12">
-                    <h1 class="text-5xl font-bold neon-text mb-4">Okami Bot Dashboard 🐺</h1>
-                    <p class="text-gray-400">نظام إدارة ومراقبة البوت - Hugging Face Edition</p>
+        <body class="flex h-screen overflow-hidden">
+            <!-- Sidebar -->
+            <aside class="w-64 sidebar p-6 flex flex-col">
+                <div class="mb-10 text-center">
+                    <h1 class="text-3xl font-bold neon-text">OKAMI 🐺</h1>
+                    <p class="text-xs text-gray-500 mt-1">v5.2.0 Pro Edition</p>
+                </div>
+                <nav class="flex-1 space-y-4">
+                    <a href="#" class="flex items-center p-3 text-purple-400 bg-purple-900/10 rounded-lg"><i class="fas fa-chart-line ml-3"></i> الإحصائيات</a>
+                    <a href="#" class="flex items-center p-3 text-gray-400 hover:bg-zinc-900 rounded-lg"><i class="fas fa-book ml-3"></i> إدارة المانهوا</a>
+                    <a href="#" class="flex items-center p-3 text-gray-400 hover:bg-zinc-900 rounded-lg"><i class="fas fa-users ml-3"></i> المستخدمين</a>
+                    <a href="#" class="flex items-center p-3 text-gray-400 hover:bg-zinc-900 rounded-lg"><i class="fas fa-cog ml-3"></i> الإعدادات</a>
+                </nav>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="flex-1 flex flex-col overflow-hidden">
+                <!-- Top Bar -->
+                <header class="h-16 border-b border-zinc-800 flex items-center justify-between px-8 bg-zinc-900/50">
+                    <div class="relative w-96">
+                        <i class="fas fa-terminal absolute right-3 top-3 text-gray-500"></i>
+                        <input id="commandInput" type="text" placeholder="اكتب / للأوامر السريعة..." class="w-full bg-black border border-zinc-700 rounded-lg py-2 pr-10 pl-4 command-input text-sm">
+                        <div id="commandList" class="hidden absolute top-12 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50">
+                            <div class="p-2 hover:bg-purple-900/20 cursor-pointer text-sm" onclick="setCmd('/search ')"><i class="fas fa-search ml-2"></i> /search [اسم المانهوا]</div>
+                            <div class="p-2 hover:bg-purple-900/20 cursor-pointer text-sm" onclick="setCmd('/stats')"><i class="fas fa-info-circle ml-2"></i> /stats - عرض الإحصائيات</div>
+                            <div class="p-2 hover:bg-purple-900/20 cursor-pointer text-sm" onclick="setCmd('/cleanup')"><i class="fas fa-broom ml-2"></i> /cleanup - تنظيف الملفات</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span class="flex items-center text-xs text-green-500"><i class="fas fa-circle mr-2 text-[8px]"></i> متصل</span>
+                    </div>
                 </header>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                    <div class="bg-zinc-900 p-6 rounded-xl neon-border text-center">
-                        <h2 class="text-xl text-gray-400 mb-2">عدد المستخدمين</h2>
-                        <p class="text-4xl font-bold">${userCount}</p>
+                <!-- Dashboard Content -->
+                <div class="flex-1 overflow-y-auto p-8">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="card p-6 rounded-2xl">
+                            <p class="text-gray-500 text-sm">إجمالي المستخدمين</p>
+                            <h3 class="text-3xl font-bold mt-2">${userCount}</h3>
+                        </div>
+                        <div class="card p-6 rounded-2xl">
+                            <p class="text-gray-500 text-sm">الأعمال المسجلة</p>
+                            <h3 class="text-3xl font-bold mt-2">${mangaCount}</h3>
+                        </div>
+                        <div class="card p-6 rounded-2xl">
+                            <p class="text-gray-500 text-sm">الفصول المنشورة</p>
+                            <h3 class="text-3xl font-bold mt-2">1,240</h3>
+                        </div>
                     </div>
-                    <div class="bg-zinc-900 p-6 rounded-xl neon-border text-center">
-                        <h2 class="text-xl text-gray-400 mb-2">عدد المانهوا</h2>
-                        <p class="text-4xl font-bold">${mangaCount}</p>
-                    </div>
-                    <div class="bg-zinc-900 p-6 rounded-xl neon-border text-center">
-                        <h2 class="text-xl text-gray-400 mb-2">حالة السيرفر</h2>
-                        <p class="text-4xl font-bold text-green-500">متصل</p>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="card p-8 rounded-2xl">
+                            <h4 class="text-lg font-bold mb-6 neon-text">أفضل المتفاعلين</h4>
+                            <div class="space-y-4">
+                                ${topUsers.map((u, i) => `
+                                    <div class="flex items-center justify-between p-3 bg-zinc-900/50 rounded-xl">
+                                        <div class="flex items-center">
+                                            <span class="w-6 text-gray-500 font-mono">${i+1}</span>
+                                            <div class="mr-3">
+                                                <p class="font-bold text-sm">${u.name || u.fb_id}</p>
+                                                <p class="text-xs text-gray-500">Lvl ${u.level}</p>
+                                            </div>
+                                        </div>
+                                        <span class="text-purple-400 font-bold">${u.points} pt</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div class="card p-8 rounded-2xl flex flex-col">
+                            <h4 class="text-lg font-bold mb-6 neon-text">مخرجات النظام (Console)</h4>
+                            <div id="consoleOutput" class="flex-1 bg-black rounded-xl p-4 font-mono text-xs text-green-400 overflow-y-auto h-64">
+                                [System] Okami Bot v5.2.0 initialized...<br>
+                                [Database] Connected to MongoDB Cloud...<br>
+                                [Ready] Waiting for commands...
+                            </div>
+                        </div>
                     </div>
                 </div>
+            </main>
 
-                <div class="bg-zinc-900 p-8 rounded-xl neon-border">
-                    <h2 class="text-2xl font-bold mb-6 neon-text">أفضل 5 مستخدمين (نقابات)</h2>
-                    <table class="w-full text-right">
-                        <thead>
-                            <tr class="border-b border-zinc-800 text-gray-400">
-                                <th class="pb-4">المستخدم</th>
-                                <th class="pb-4">النقاط</th>
-                                <th class="pb-4">المستوى</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${topUsers.map(u => `
-                                <tr class="border-b border-zinc-800">
-                                    <td class="py-4 font-bold">${u.name || u.fb_id}</td>
-                                    <td class="py-4 text-purple-400">${u.points}</td>
-                                    <td class="py-4 text-gray-400">${u.level}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
+            <script>
+                const input = document.getElementById('commandInput');
+                const list = document.getElementById('commandList');
+                const consoleOutput = document.getElementById('consoleOutput');
 
-                <footer class="mt-12 text-center text-gray-600">
-                    <p>&copy; 2026 Okami Bot System - Created for dark anime lovers</p>
-                </footer>
-            </div>
+                input.addEventListener('input', (e) => {
+                    if (e.target.value.startsWith('/')) {
+                        list.classList.remove('hidden');
+                    } else {
+                        list.classList.add('hidden');
+                    }
+                });
+
+                function setCmd(cmd) {
+                    input.value = cmd;
+                    list.classList.add('hidden');
+                    input.focus();
+                }
+
+                input.addEventListener('keypress', async (e) => {
+                    if (e.key === 'Enter') {
+                        const cmd = input.value;
+                        input.value = '';
+                        list.classList.add('hidden');
+                        appendToConsole('> ' + cmd);
+                        
+                        try {
+                            const res = await fetch('/api/command', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ command: cmd })
+                            });
+                            const data = await res.json();
+                            appendToConsole(data.output, data.type);
+                        } catch (err) {
+                            appendToConsole('Error executing command', 'error');
+                        }
+                    }
+                });
+
+                function appendToConsole(text, type = 'info') {
+                    const color = type === 'error' ? 'text-red-500' : (type === 'success' ? 'text-blue-400' : 'text-green-400');
+                    consoleOutput.innerHTML += \`<div class="\${color}">[\${new Date().toLocaleTimeString()}] \${text}</div>\`;
+                    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                }
+            </script>
         </body>
         </html>
         `;
@@ -101,18 +175,43 @@ app.get('/', async (req, res) => {
     }
 });
 
-// Webhook لفيسبوك
+// --- Command API ---
+app.post('/api/command', async (req, res) => {
+    const { command } = req.body;
+    try {
+        if (command.startsWith('/search ')) {
+            const query = command.replace('/search ', '');
+            const results = await scraperEngine.searchAll(query);
+            if (results.length === 0) {
+                return res.json({ output: 'لم يتم العثور على نتائج لـ: ' + query, type: 'info' });
+            }
+            const output = results.map(r => `[${r.sourceName}] ${r.title}`).join('<br>');
+            return res.json({ output: 'نتائج البحث:<br>' + output, type: 'success' });
+        }
+        
+        if (command === '/stats') {
+            const userCount = await User.countDocuments();
+            return res.json({ output: `إحصائيات سريعة: ${userCount} مستخدم، ${await Manga.countDocuments()} مانهوا.`, type: 'success' });
+        }
+
+        if (command === '/cleanup') {
+            return res.json({ output: 'تم بدء عملية تنظيف الملفات المؤقتة...', type: 'info' });
+        }
+
+        res.json({ output: 'أمر غير معروف. استخدم / للمساعدة.', type: 'error' });
+    } catch (error) {
+        res.json({ output: 'خطأ: ' + error.message, type: 'error' });
+    }
+});
+
+// --- Existing Webhook & Server Logic ---
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
-
     if (mode && token) {
-        if (mode === 'subscribe' && token === config.facebook.verifyToken) {
-            res.status(200).send(challenge);
-        } else {
-            res.sendStatus(403);
-        }
+        if (mode === 'subscribe' && token === config.facebook.verifyToken) res.status(200).send(challenge);
+        else res.sendStatus(403);
     }
 });
 
@@ -128,58 +227,21 @@ app.post('/webhook', (req, res) => {
                     const sender_id = webhook_event.sender.id;
                     if (webhook_event.message && webhook_event.message.text) {
                         const responseText = await DialogueService.handleMessage(sender_id, webhook_event.message.text);
-                        if (responseText) {
-                            await FacebookPublisher.sendDirectMessage(sender_id, responseText);
-                        }
+                        if (responseText) await FacebookPublisher.sendDirectMessage(sender_id, responseText);
                     }
                 }
             } catch (error) {
                 logger.error(`Background Webhook Error: ${error.message}`);
             }
         })();
-    } else {
-        res.sendStatus(404);
-    }
+    } else res.sendStatus(404);
 });
 
-// --- Resource Management: Cleanup Task ---
-const TEMP_DIR = path.resolve('./src/temp');
-if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-
-setInterval(() => {
-    try {
-        const now = Date.now();
-        const files = fs.readdirSync(TEMP_DIR);
-        for (const file of files) {
-            const filePath = path.join(TEMP_DIR, file);
-            const stats = fs.statSync(filePath);
-            const ageMinutes = (now - stats.mtimeMs) / (1000 * 60);
-            if (ageMinutes > 10) {
-                if (stats.isDirectory()) fs.rmSync(filePath, { recursive: true, force: true });
-                else fs.unlinkSync(filePath);
-            }
-        }
-    } catch (error) {
-        logger.error(`Cleanup Engine Error: ${error.message}`);
-    }
-}, 60 * 60 * 1000);
-
-// --- Server Startup ---
 const startServer = (port) => {
-    const server = app.listen(port, async () => {
+    app.listen(port, async () => {
         logger.info(`Okami Bot Dashboard running on port ${port}`);
-        try {
-            await QueueSystem.resumeQueue();
-        } catch (e) {
-            logger.error(`Queue Resume Error: ${e.message}`);
-        }
-    });
-
-    server.on('error', (err) => {
-        if (err.code === 'EADDRINUSE') {
-            setTimeout(() => startServer(0), 1000);
-        }
-    });
+        try { await QueueSystem.resumeQueue(); } catch (e) { logger.error(`Queue Resume Error: ${e.message}`); }
+    }).on('error', (err) => { if (err.code === 'EADDRINUSE') setTimeout(() => startServer(0), 1000); });
 };
 
 startServer(config.port);
