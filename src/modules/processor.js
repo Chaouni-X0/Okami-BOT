@@ -55,24 +55,29 @@ export class ChapterProcessor {
 
         const processedImages = [];
 
-        for (let i = 0; i < imageUrls.length; i++) {
-            try {
-                const imgUrl = imageUrls[i];
-                const response = await axios({
-                    url: imgUrl,
-                    responseType: 'arraybuffer',
-                    headers: { 'User-Agent': config.scraping.userAgent }
-                });
+        try {
+            for (let i = 0; i < imageUrls.length; i++) {
+                try {
+                    const imgUrl = imageUrls[i];
+                    const response = await axios({
+                        url: imgUrl,
+                        responseType: 'arraybuffer',
+                        headers: { 'User-Agent': config.scraping.userAgent }
+                    });
 
-                const parts = await this.sliceImage(response.data, chapterDir, i);
-                processedImages.push(...parts);
+                    const parts = await this.sliceImage(response.data, chapterDir, i);
+                    processedImages.push(...parts);
 
-            } catch (error) {
-                console.error(`Failed to process image ${i}:`, error.message);
+                } catch (error) {
+                    console.error(`Failed to process image ${i}:`, error.message);
+                }
             }
+            return { chapterDir, images: processedImages };
+        } catch (error) {
+            // Aggressive fail-safe cleanup
+            this.cleanup(chapterDir);
+            throw error;
         }
-
-        return { chapterDir, images: processedImages };
     }
 
     cleanup(dirPath) {
