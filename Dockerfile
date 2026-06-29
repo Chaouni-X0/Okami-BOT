@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libgif-dev \
     librsvg2-dev \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # إنشاء مجلد العمل
@@ -16,20 +17,23 @@ WORKDIR /app
 
 # نسخ ملفات الحزم وتثبيتها
 COPY package*.json ./
-RUN npm install
+# تثبيت التبعيات مع تجاهل الـ devDependencies لتقليل الحجم
+RUN npm install --production
 
 # نسخ باقي ملفات المشروع
 COPY . .
 
 # إنشاء مجلد البيانات والتخزين الدائم
-RUN mkdir -p /app/data/temp
+# Hugging Face Spaces تستخدم عادةً /data للتخزين الدائم إذا تم إعداد Persistent Storage
+RUN mkdir -p /app/data/temp && chmod -R 777 /app/data
 
 # تعيين المتغيرات البيئية الافتراضية
 ENV DATA_DIR=/app/data
-ENV PORT=3000
+ENV PORT=7860
+ENV NODE_ENV=production
 
-# فتح المنفذ
-EXPOSE 3000
+# فتح المنفذ (Hugging Face يستخدم 7860 افتراضياً)
+EXPOSE 7860
 
 # تشغيل البوت
 CMD ["npm", "start"]

@@ -1,4 +1,4 @@
-import db from '../database/db.js';
+import { User } from '../database/mongo.js';
 import logger from '../utils/logger.js';
 
 export class GamificationService {
@@ -11,64 +11,50 @@ export class GamificationService {
     }
 
     static async addUserActivity(fbId, xpGain, pointsGain) {
-        let user = db.prepare('SELECT * FROM users WHERE fb_id = ?').get(fbId);
-        
-        if (!user) {
-            db.prepare('INSERT INTO users (fb_id, points, xp, level) VALUES (?, ?, ?, ?)').run(fbId, pointsGain, xpGain, 1);
-            user = { fb_id: fbId, points: pointsGain, xp: xpGain, level: 1 };
-        } else {
-            // التحقق من الفعاليات النشطة (مثل مضاعفة النقاط)
-            import { EventService } from './event.service.js';
-            const activeEvent = EventService.getActiveEvent();
-            let finalPoints = pointsGain;
-            if (activeEvent && activeEvent.type === 'DOUBLE_POINTS') {
-                finalPoints *= 2;
+        try {
+            let user = await User.findOne({ fb_id: fbId });
+            if (!user) {
+                user = await User.create({ fb_id: fbId, points: pointsGain, xp: xpGain, level: 1 });
+            } else {
+                user.xp += xpGain;
+                user.points += pointsGain;
+                
+                const xpNeeded = user.level * 100;
+                if (user.xp >= xpNeeded) {
+                    user.level++;
+                    user.xp -= xpNeeded;
+                    logger.info(`User ${fbId} leveled up to ${user.level}!`);
+                }
+                await user.save();
             }
-
-            const newXp = user.xp + xpGain;
-            const newPoints = user.points + finalPoints;
-            let newLevel = user.level;
-
-            // نظام ترقية المستوى (Level Up)
-            const xpNeeded = newLevel * 100;
-            if (newXp >= xpNeeded) {
-                newLevel++;
-                const newTitle = this.getRankTitle(newLevel);
-                db.prepare('UPDATE users SET level = ?, rank_title = ? WHERE fb_id = ?').run(newLevel, newTitle, fbId);
-                logger.info(`User ${fbId} leveled up to ${newLevel}!`);
-            }
-
-            db.prepare('UPDATE users SET xp = ?, points = ? WHERE fb_id = ?').run(newXp, newPoints, fbId);
-
-            // إضافة النقاط للقبيلة إذا كان المستخدم ينتمي لواحدة
-            if (user.guild_id) {
-                db.prepare('UPDATE guilds SET total_points = total_points + ? WHERE id = ?').run(finalPoints, user.guild_id);
-            }
+        } catch (error) {
+            logger.error(`Error adding activity for ${fbId}: ${error.message}`);
         }
     }
 
-    static async dailyCheckIn(fbId) {
-        const user = db.prepare('SELECT last_login, streak FROM users WHERE fb_id = ?').get(fbId);
-        const now = new Date();
-        
-        if (user && user.last_login) {
-            const lastLogin = new Date(user.last_login);
-            const diffDays = Math.floor((now - lastLogin) / (1000 * 60 * 60 * 24));
+    static async updateStreak(fbId) {
+        try {
+            const user = await User.findOne({ fb_id: fbId });
+            if (!user) return;
+
+            const now = new Date();
+            const lastActive = new Date(user.last_active);
+            const diffDays = Math.floor((now - lastActive) / (1000 * 60 * 60 * 24));
 
             if (diffDays === 1) {
-                const newStreak = user.streak + 1;
-                const bonus = 10 * newStreak;
-                await this.addUserActivity(fbId, 20, bonus);
-                db.prepare('UPDATE users SET streak = ?, last_login = ? WHERE fb_id = ?').run(newStreak, now.toISOString(), fbId);
-                return { success: true, streak: newStreak, bonus };
+                user.streak += 1;
             } else if (diffDays > 1) {
-                db.prepare('UPDATE users SET streak = 1, last_login = ? WHERE fb_id = ?').run(now.toISOString(), fbId);
-                return { success: true, streak: 1, bonus: 10 };
+                user.streak = 1;
             }
-        } else {
-            db.prepare('INSERT OR REPLACE INTO users (fb_id, streak, last_login) VALUES (?, 1, ?)').run(fbId, now.toISOString());
-            return { success: true, streak: 1, bonus: 10 };
+            user.last_active = now;
+            await user.save();
+        } catch (error) {
+            logger.error(`Error updating streak for ${fbId}: ${error.message}`);
         }
-        return { success: false, message: 'Already checked in today.' };
+    }
+
+    // Leaderboard generated only on demand
+    static async getLeaderboard() {
+        return await User.find().sort({ points: -1 }).limit(10);
     }
 }

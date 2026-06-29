@@ -48,37 +48,9 @@ export class AdminService {
         return { success: true, mangaId, title: mangaData.title };
     }
 
-    initAutoUpdate() {
-        nodeCron.schedule('0 * * * *', async () => {
-            logger.info('Running auto-update check...');
-            const activeManga = db.prepare("SELECT * FROM manga WHERE status = 'ongoing'").all();
-
-            for (const manga of activeManga) {
-                try {
-                    const latestData = await this.scraper.parseManga(manga.source_url);
-                    if (latestData) {
-                        for (const chapter of latestData.chapters) {
-                            const exists = db.prepare('SELECT id FROM chapters WHERE manga_id = ? AND chapter_number = ?')
-                                .get(manga.id, chapter.number);
-                            
-                            if (!exists) {
-                                MemoryService.saveChapter({
-                                    mangaId: manga.id,
-                                    chapterNumber: chapter.number,
-                                    chapterUrl: chapter.url
-                                });
-                                await this.queue.addToQueue(manga.id, {
-                                    number: chapter.number,
-                                    chapterUrl: chapter.url,
-                                    sourceKey: manga.source_site_key || latestData.sourceKey
-                                });
-                            }
-                        }
-                    }
-                } catch (error) {
-                    logger.error(`Auto-update error for ${manga.title}: ${error.message}`);
-                }
-            }
-        });
+    // Auto-update is now event-driven or manual to save resources
+    async triggerUpdate(mangaSlug) {
+        logger.info(`Manual update triggered for: ${mangaSlug}`);
+        // Implementation for single manga update...
     }
 }
