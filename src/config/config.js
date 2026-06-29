@@ -32,7 +32,12 @@ export const config = {
         { id: 'mangalek', name: 'Manga Lek', url: 'https://mangalek.com' },
         { id: 'mangaswat', name: 'Manga Swat', url: 'https://swatmanga.me' },
         { id: 'gmanga', name: 'G-Manga', url: 'https://gmanga.me' },
-        { id: 'azoramanga', name: 'Azora Manga', url: 'https://azoramanga.com' }
+        { id: 'azoramanga', name: 'Azora Manga', url: 'https://azoramanga.com' },
+        { id: 'mangatime', name: 'Manga Time', url: 'https://mangatime.us' },
+        { id: 'mangaonlineteam', name: 'Manga Online Team', url: 'https://mangaonlineteam.com' },
+        { id: 'teamx', name: 'Team X', url: 'https://team1x1.com' },
+        { id: 'mangaspark', name: 'Manga Spark', url: 'https://mangaspark.com' },
+        { id: 'mangalord', name: 'Manga Lord', url: 'https://mangalord.com' }
     ],
     settings: {
         maxImageHeight: 1500,
