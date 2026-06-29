@@ -1,36 +1,41 @@
 import mongoose from 'mongoose';
 import logger from '../utils/logger.js';
-import dotenv from 'dotenv';
+import { config } from '../config/config.js';
 
-dotenv.config();
+const connectWithRetry = () => {
+    if (!config.mongodb.uri) {
+        logger.warn('MONGODB_URI is not defined. Persistent data features will be limited.');
+        return;
+    }
 
-const MONGODB_URI = process.env.MONGODB_URI;
+    mongoose.connect(config.mongodb.uri, {
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+    })
+    .then(() => logger.info('Connected to MongoDB Atlas'))
+    .catch(err => {
+        logger.error(`MongoDB connection error: ${err.message}. Retrying in 5 seconds...`);
+        setTimeout(connectWithRetry, 5000);
+    });
+};
 
-if (!MONGODB_URI) {
-    logger.warn('MONGODB_URI not found in environment variables. MongoDB features will be disabled.');
-} else {
-    mongoose.connect(MONGODB_URI)
-        .then(() => logger.info('Connected to MongoDB (Cloud)'))
-        .catch(err => logger.error('MongoDB connection error:', err));
-}
+connectWithRetry();
 
-// User Schema
 const userSchema = new mongoose.Schema({
-    fb_id: { type: String, unique: true, required: true },
+    fb_id: { type: String, unique: true, required: true, index: true },
     name: String,
-    xp: { type: Number, default: 0 },
+    xp: { type: Number, default: 0, index: true },
     level: { type: Number, default: 1 },
-    points: { type: Number, default: 0 },
+    points: { type: Number, default: 0, index: true },
     streak: { type: Number, default: 0 },
     last_active: { type: Date, default: Date.now },
     guild_id: String,
     created_at: { type: Date, default: Date.now }
 });
 
-// Manga Metadata Schema
 const mangaSchema = new mongoose.Schema({
-    title: String,
-    slug: { type: String, unique: true },
+    title: { type: String, required: true },
+    slug: { type: String, unique: true, required: true, index: true },
     cover_url: String,
     status: String,
     source_site_key: String,

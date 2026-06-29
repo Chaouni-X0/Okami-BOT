@@ -9,16 +9,47 @@ import scraperEngine from './modules/scraper.js';
 import logger from './utils/logger.js';
 import fs from 'fs';
 import path from 'path';
+import mongoose from 'mongoose';
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
+
+// --- Global Error Handling (Zero-Failure Architecture) ---
+process.on('uncaughtException', (error) => {
+    logger.error(`[CRITICAL] Uncaught Exception: ${error.message}`);
+    logger.error(error.stack);
+    // Keep alive on non-fatal errors, but log everything
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error(`[CRITICAL] Unhandled Rejection at: ${promise}, reason: ${reason}`);
+});
+
+// --- Graceful Shutdown ---
+const gracefulShutdown = async () => {
+    logger.warn('Initiating graceful shutdown...');
+    try {
+        if (mongoose.connection.readyState === 1) {
+            await mongoose.disconnect();
+            logger.info('MongoDB connection closed.');
+        }
+        logger.info('Graceful shutdown complete. Exiting.');
+        process.exit(0);
+    } catch (err) {
+        logger.error(`Error during shutdown: ${err.message}`);
+        process.exit(1);
+    }
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 // --- Dashboard HTML ---
 app.get('/', async (req, res) => {
     try {
-        const userCount = await User.countDocuments();
-        const mangaCount = await Manga.countDocuments();
-        const topUsers = await User.find().sort({ points: -1 }).limit(5);
+        const userCount = await User.countDocuments().catch(() => 0);
+        const mangaCount = await Manga.countDocuments().catch(() => 0);
+        const topUsers = await User.find().sort({ points: -1 }).limit(5).catch(() => []);
         
         const html = `
         <!DOCTYPE html>
@@ -40,23 +71,16 @@ app.get('/', async (req, res) => {
             </style>
         </head>
         <body class="flex h-screen overflow-hidden">
-            <!-- Sidebar -->
             <aside class="w-64 sidebar p-6 flex flex-col">
                 <div class="mb-10 text-center">
                     <h1 class="text-3xl font-bold neon-text">OKAMI 🐺</h1>
-                    <p class="text-xs text-gray-500 mt-1">v5.2.0 Pro Edition</p>
+                    <p class="text-xs text-gray-500 mt-1">v5.2.1 Resilience Edition</p>
                 </div>
                 <nav class="flex-1 space-y-4">
                     <a href="#" class="flex items-center p-3 text-purple-400 bg-purple-900/10 rounded-lg"><i class="fas fa-chart-line ml-3"></i> الإحصائيات</a>
-                    <a href="#" class="flex items-center p-3 text-gray-400 hover:bg-zinc-900 rounded-lg"><i class="fas fa-book ml-3"></i> إدارة المانهوا</a>
-                    <a href="#" class="flex items-center p-3 text-gray-400 hover:bg-zinc-900 rounded-lg"><i class="fas fa-users ml-3"></i> المستخدمين</a>
-                    <a href="#" class="flex items-center p-3 text-gray-400 hover:bg-zinc-900 rounded-lg"><i class="fas fa-cog ml-3"></i> الإعدادات</a>
                 </nav>
             </aside>
-
-            <!-- Main Content -->
             <main class="flex-1 flex flex-col overflow-hidden">
-                <!-- Top Bar -->
                 <header class="h-16 border-b border-zinc-800 flex items-center justify-between px-8 bg-zinc-900/50">
                     <div class="relative w-96">
                         <i class="fas fa-terminal absolute right-3 top-3 text-gray-500"></i>
@@ -64,15 +88,12 @@ app.get('/', async (req, res) => {
                         <div id="commandList" class="hidden absolute top-12 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50">
                             <div class="p-2 hover:bg-purple-900/20 cursor-pointer text-sm" onclick="setCmd('/search ')"><i class="fas fa-search ml-2"></i> /search [اسم المانهوا]</div>
                             <div class="p-2 hover:bg-purple-900/20 cursor-pointer text-sm" onclick="setCmd('/stats')"><i class="fas fa-info-circle ml-2"></i> /stats - عرض الإحصائيات</div>
-                            <div class="p-2 hover:bg-purple-900/20 cursor-pointer text-sm" onclick="setCmd('/cleanup')"><i class="fas fa-broom ml-2"></i> /cleanup - تنظيف الملفات</div>
                         </div>
                     </div>
                     <div class="flex items-center space-x-4">
                         <span class="flex items-center text-xs text-green-500"><i class="fas fa-circle mr-2 text-[8px]"></i> متصل</span>
                     </div>
                 </header>
-
-                <!-- Dashboard Content -->
                 <div class="flex-1 overflow-y-auto p-8">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         <div class="card p-6 rounded-2xl">
@@ -83,89 +104,9 @@ app.get('/', async (req, res) => {
                             <p class="text-gray-500 text-sm">الأعمال المسجلة</p>
                             <h3 class="text-3xl font-bold mt-2">${mangaCount}</h3>
                         </div>
-                        <div class="card p-6 rounded-2xl">
-                            <p class="text-gray-500 text-sm">الفصول المنشورة</p>
-                            <h3 class="text-3xl font-bold mt-2">1,240</h3>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <div class="card p-8 rounded-2xl">
-                            <h4 class="text-lg font-bold mb-6 neon-text">أفضل المتفاعلين</h4>
-                            <div class="space-y-4">
-                                ${topUsers.map((u, i) => `
-                                    <div class="flex items-center justify-between p-3 bg-zinc-900/50 rounded-xl">
-                                        <div class="flex items-center">
-                                            <span class="w-6 text-gray-500 font-mono">${i+1}</span>
-                                            <div class="mr-3">
-                                                <p class="font-bold text-sm">${u.name || u.fb_id}</p>
-                                                <p class="text-xs text-gray-500">Lvl ${u.level}</p>
-                                            </div>
-                                        </div>
-                                        <span class="text-purple-400 font-bold">${u.points} pt</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-
-                        <div class="card p-8 rounded-2xl flex flex-col">
-                            <h4 class="text-lg font-bold mb-6 neon-text">مخرجات النظام (Console)</h4>
-                            <div id="consoleOutput" class="flex-1 bg-black rounded-xl p-4 font-mono text-xs text-green-400 overflow-y-auto h-64">
-                                [System] Okami Bot v5.2.0 initialized...<br>
-                                [Database] Connected to MongoDB Cloud...<br>
-                                [Ready] Waiting for commands...
-                            </div>
-                        </div>
                     </div>
                 </div>
             </main>
-
-            <script>
-                const input = document.getElementById('commandInput');
-                const list = document.getElementById('commandList');
-                const consoleOutput = document.getElementById('consoleOutput');
-
-                input.addEventListener('input', (e) => {
-                    if (e.target.value.startsWith('/')) {
-                        list.classList.remove('hidden');
-                    } else {
-                        list.classList.add('hidden');
-                    }
-                });
-
-                function setCmd(cmd) {
-                    input.value = cmd;
-                    list.classList.add('hidden');
-                    input.focus();
-                }
-
-                input.addEventListener('keypress', async (e) => {
-                    if (e.key === 'Enter') {
-                        const cmd = input.value;
-                        input.value = '';
-                        list.classList.add('hidden');
-                        appendToConsole('> ' + cmd);
-                        
-                        try {
-                            const res = await fetch('/api/command', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ command: cmd })
-                            });
-                            const data = await res.json();
-                            appendToConsole(data.output, data.type);
-                        } catch (err) {
-                            appendToConsole('Error executing command', 'error');
-                        }
-                    }
-                });
-
-                function appendToConsole(text, type = 'info') {
-                    const color = type === 'error' ? 'text-red-500' : (type === 'success' ? 'text-blue-400' : 'text-green-400');
-                    consoleOutput.innerHTML += \`<div class="\${color}">[\${new Date().toLocaleTimeString()}] \${text}</div>\`;
-                    consoleOutput.scrollTop = consoleOutput.scrollHeight;
-                }
-            </script>
         </body>
         </html>
         `;
@@ -179,39 +120,35 @@ app.get('/', async (req, res) => {
 app.post('/api/command', async (req, res) => {
     const { command } = req.body;
     try {
+        if (!command) return res.status(400).json({ output: 'No command provided', type: 'error' });
+        
         if (command.startsWith('/search ')) {
             const query = command.replace('/search ', '');
             const results = await scraperEngine.searchAll(query);
-            if (results.length === 0) {
-                return res.json({ output: 'لم يتم العثور على نتائج لـ: ' + query, type: 'info' });
-            }
-            const output = results.map(r => `[${r.sourceName}] ${r.title}`).join('<br>');
+            const output = results.length > 0 ? results.map(r => `[${r.sourceName}] ${r.title}`).join('<br>') : 'لا توجد نتائج.';
             return res.json({ output: 'نتائج البحث:<br>' + output, type: 'success' });
         }
         
-        if (command === '/stats') {
-            const userCount = await User.countDocuments();
-            return res.json({ output: `إحصائيات سريعة: ${userCount} مستخدم، ${await Manga.countDocuments()} مانهوا.`, type: 'success' });
-        }
-
-        if (command === '/cleanup') {
-            return res.json({ output: 'تم بدء عملية تنظيف الملفات المؤقتة...', type: 'info' });
-        }
-
-        res.json({ output: 'أمر غير معروف. استخدم / للمساعدة.', type: 'error' });
+        res.json({ output: 'أمر غير معروف.', type: 'error' });
     } catch (error) {
         res.json({ output: 'خطأ: ' + error.message, type: 'error' });
     }
 });
 
-// --- Existing Webhook & Server Logic ---
+// --- Webhook ---
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
     if (mode && token) {
-        if (mode === 'subscribe' && token === config.facebook.verifyToken) res.status(200).send(challenge);
-        else res.sendStatus(403);
+        if (mode === 'subscribe' && token === config.facebook.verifyToken) {
+            logger.info('Webhook Verified Successfully');
+            res.status(200).send(challenge);
+        } else {
+            res.sendStatus(403);
+        }
+    } else {
+        res.sendStatus(400);
     }
 });
 
@@ -219,36 +156,39 @@ app.post('/webhook', (req, res) => {
     const body = req.body;
     if (body.object === 'page') {
         res.status(200).send('EVENT_RECEIVED');
-        
-        // Asynchronous processing loop
         (async () => {
             for (const entry of body.entry) {
                 try {
                     if (!entry.messaging) continue;
                     const webhook_event = entry.messaging[0];
                     const sender_id = webhook_event.sender.id;
-                    
                     if (webhook_event.message?.text) {
                         const responseText = await DialogueService.handleMessage(sender_id, webhook_event.message.text);
-                        if (responseText) {
-                            await FacebookPublisher.sendDirectMessage(sender_id, responseText);
-                        }
+                        if (responseText) await FacebookPublisher.sendDirectMessage(sender_id, responseText);
                     }
                 } catch (error) {
-                    logger.error(`[Webhook Entry Error] Sender ${entry?.messaging?.[0]?.sender?.id}: ${error.message}`);
+                    logger.error(`[Webhook Entry Error]: ${error.message}`);
                 }
             }
         })();
-    } else {
-        res.sendStatus(404);
-    }
+    } else res.sendStatus(404);
 });
 
+// --- Server Boot ---
 const startServer = (port) => {
-    app.listen(port, async () => {
+    const server = app.listen(port, async () => {
         logger.info(`Okami Bot Dashboard running on port ${port}`);
-        try { await QueueSystem.resumeQueue(); } catch (e) { logger.error(`Queue Resume Error: ${e.message}`); }
-    }).on('error', (err) => { if (err.code === 'EADDRINUSE') setTimeout(() => startServer(0), 1000); });
+        try {
+            await QueueSystem.resumeQueue();
+        } catch (e) {
+            logger.error(`Queue Resume Error: ${e.message}`);
+        }
+    }).on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            logger.warn(`Port ${port} in use, retrying on random port...`);
+            setTimeout(() => startServer(0), 1000);
+        }
+    });
 };
 
 startServer(config.port);

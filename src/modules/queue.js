@@ -4,6 +4,7 @@ import { ChapterProcessor } from './processor.js';
 import { FacebookPublisher } from './publisher.js';
 import logger from '../utils/logger.js';
 import db from '../database/db.js';
+import { Manga } from '../database/mongo.js'; // REPAIRED: Moved to top-level
 
 export class OkamiQueue {
     constructor() {
@@ -40,38 +41,46 @@ export class OkamiQueue {
 
         this.isProcessing = true;
         
+        let processed;
         try {
             db.prepare("UPDATE publish_queue SET status = 'processing' WHERE id = ?").run(task.id);
             
-            // Get manga metadata from MongoDB (manga_id in SQLite is now the slug)
-            import { Manga } from '../database/mongo.js';
+            // Get manga metadata from MongoDB
             const manga = await Manga.findOne({ slug: task.manga_id });
             if (!manga) throw new Error(`Manga with slug ${task.manga_id} not found in MongoDB`);
 
             // 1. استخراج ومعالجة ونشر الفصل
             const images = await scraperEngine.parseChapterImages(task.source_key, task.chapter_url);
-            const processed = await this.processor.processChapter(manga.slug, task.chapter_number, images);
+            if (!images || images.length === 0) throw new Error(`No images found for chapter ${task.chapter_number}`);
+
+            processed = await this.processor.processChapter(manga.slug, task.chapter_number, images);
             
             const postText = `🐺 فصل جديد من: ${manga.title}\n🔢 رقم الفصل: ${task.chapter_number}\n📖 استمتعوا بالقراءة!\n#OkamiBot`;
             const postId = await FacebookPublisher.publishChapter(processed.images, postText);
             
             MemoryService.markChapterAsPublished(task.manga_id, task.chapter_number, postId);
 
-            // ⚠️ ميزة إدارة المساحة الجديدة: حذف الفصل فوراً بعد النشر
-            this.processor.cleanup(processed.chapterDir);
-            logger.info(`[SPACE SAVER] Chapter ${task.chapter_number} published and deleted from storage.`);
-
             db.prepare("DELETE FROM publish_queue WHERE id = ?").run(task.id);
+            
             await this.handleAggregation({
                 title: manga.title,
                 status: manga.status,
                 slug: manga.slug
             });
 
-            // الانتظار 5 دقائق قبل الفصل التالي
+            logger.info(`[Queue] Successfully published Chapter ${task.chapter_number} for ${manga.title}`);
             setTimeout(() => this.processNext(), this.delayBetweenChapters);
 
         } catch (error) {
+            logger.error(`[Queue Error] Task ${task?.id}: ${error.message}`);
+            db.prepare("UPDATE publish_queue SET status = 'failed' WHERE id = ?").run(task.id);
+            setTimeout(() => this.processNext(), 60000);
+        } finally {
+            // Bulletproof Cleanup
+            if (processed && processed.chapterDir) {
+                this.processor.cleanup(processed.chapterDir);
+            }
+        }
             logger.error(`Error processing task ${task?.id}: ${error.message}`);
             db.prepare("UPDATE publish_queue SET status = 'failed' WHERE id = ?").run(task.id);
             setTimeout(() => this.processNext(), 60000);
