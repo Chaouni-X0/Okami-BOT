@@ -42,7 +42,11 @@ export class OkamiQueue {
         
         try {
             db.prepare("UPDATE publish_queue SET status = 'processing' WHERE id = ?").run(task.id);
-            const manga = db.prepare('SELECT * FROM manga WHERE id = ?').get(task.manga_id);
+            
+            // Get manga metadata from MongoDB (manga_id in SQLite is now the slug)
+            import { Manga } from '../database/mongo.js';
+            const manga = await Manga.findOne({ slug: task.manga_id });
+            if (!manga) throw new Error(`Manga with slug ${task.manga_id} not found in MongoDB`);
 
             // 1. استخراج ومعالجة ونشر الفصل
             const images = await scraperEngine.parseChapterImages(task.source_key, task.chapter_url);
@@ -58,27 +62,36 @@ export class OkamiQueue {
             logger.info(`[SPACE SAVER] Chapter ${task.chapter_number} published and deleted from storage.`);
 
             db.prepare("DELETE FROM publish_queue WHERE id = ?").run(task.id);
-            await this.handleAggregation(task.manga_id);
+            await this.handleAggregation({
+                title: manga.title,
+                status: manga.status,
+                slug: manga.slug
+            });
 
             // الانتظار 5 دقائق قبل الفصل التالي
             setTimeout(() => this.processNext(), this.delayBetweenChapters);
 
         } catch (error) {
-            logger.error(`Error: ${error.message}`);
+            logger.error(`Error processing task ${task?.id}: ${error.message}`);
             db.prepare("UPDATE publish_queue SET status = 'failed' WHERE id = ?").run(task.id);
             setTimeout(() => this.processNext(), 60000);
         }
     }
 
-    async handleAggregation(mangaId) {
-        const manga = db.prepare('SELECT * FROM manga WHERE id = ?').get(mangaId);
-        const publishedChapters = MemoryService.getPublishedChapters(mangaId);
+    async handleAggregation(mangaData) {
+        const publishedChapters = MemoryService.getPublishedChapters(mangaData.slug);
         const chunkSize = 100;
         
         for (let i = 0; i < publishedChapters.length; i += chunkSize) {
             const chunk = publishedChapters.slice(i, i + chunkSize);
             const partNumber = Math.floor(i / chunkSize) + 1;
-            await FacebookPublisher.publishAggregation({ ...manga, partNumber, startChapter: chunk[0].chapter_number, endChapter: chunk[chunk.length-1].chapter_number }, chunk);
+            await FacebookPublisher.publishAggregation({ 
+                title: mangaData.title,
+                status: mangaData.status,
+                partNumber, 
+                startChapter: chunk[0].chapter_number, 
+                endChapter: chunk[chunk.length-1].chapter_number 
+            }, chunk);
         }
     }
 }

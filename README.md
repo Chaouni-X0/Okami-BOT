@@ -1,114 +1,46 @@
-# 🐺 Okami Bot - Facebook Manga Automation
+# 🐺 Okami Bot - Ultimate Facebook Manga Automation Engine
 
-نظام ذكي ومتقدم لإدارة ونشر المانهوا/المانغا تلقائيًا على فيسبوك.
+Okami Bot is a professional, high-performance, and resource-efficient automation system designed for manga and manhwa publishing on Facebook. It leverages a dual-database architecture and an event-driven design specifically optimized for cloud environments such as **Hugging Face Spaces**. The system is built to handle large-scale community interactions while maintaining a low resource footprint.
 
-## 🚀 المميزات
-- **Scraping Engine**: دعم تلقائي لمواقع المانهوا واستخراج الفصول.
-- **Resource Management**: حذف صور الفصول فوراً بعد النشر والاحتفاظ بروابط المنشورات فقط لتوفير المساحة.
-- **Viral Content Engine**: توليد ونشر تلقائي لقوائم المتصدرين (Leaderboards) وإحصائيات المجتمع اليومية.
-- **Guild System (القبائل)**: نظام تنافس جماعي بين فرق (مثل Team Shadow vs Team Dragon).
-- **Dynamic Events**: فعاليات زمنية مثل "Double Points Weekend" تضاعف مكافآت الجميع.
-- **Auto Poll System**: نظام تصويت آلي يشرك الجمهور في اختيار الأعمال القادمة.
-- **Bot Personality**: نظام ردود ذكي يمنح البوت شخصية فريدة (Humor + Identity).
-- **Advanced Streak Engine**: تتبع الالتزام بالقراءة والتفاعل مع مكافآت تصاعدية (يوم 3، 7، 30).
-- **Continue Reading**: ميزة ذكية تسمح للمستخدم بالعودة لآخر فصل قرأه بضغطة زر.
-- **Dynamic Visuals**: توليد تلقائي لصور إحصائيات وبطاقات مستخدم احترافية.
+## 🚀 Key Innovations and Architecture
 
-## 🏰 نظام القبائل (Guilds)
-يمكن للمستخدمين الانضمام لقبائل للتنافس الجماعي:
-- نقاط كل فرد تضاف لمجموع نقاط القبيلة.
-- مكافآت أسبوعية لأعضاء القبيلة المتصدرة.
+The project utilizes a **Dual-Database Architecture** to balance persistence and performance. Persistent community data, including user profiles, levels, XP, and global manga metadata, is stored in **MongoDB Cloud**. Meanwhile, high-frequency transient tasks such as chapter download queues and processing states are handled by a local **SQLite** database. This separation ensures that critical data remains safe while transient operations are executed with maximum speed.
 
-## 🛠️ لوحة تحكم المطور الاحترافية (Pro Admin Panel)
-يمكنك إرسال هذه الأوامر المتقدمة عبر `POST /admin/dev-command`:
+Okami Bot follows an **Event-Driven Execution** model, moving away from continuous polling and resource-heavy cron jobs. Features like points calculation, leaderboard generation, and event triggers are activated only when specific user conditions are met. This on-demand approach drastically reduces CPU and memory consumption, making it ideal for ephemeral storage environments like Hugging Face.
 
-### 🏰 إدارة القبائل (Guild Admin)
-- `CREATE_GUILD`: إنشاء قبيلة جديدة.
-- `REWARD_GUILD`: توزيع نقاط لجميع أعضاء قبيلة معينة (مكافأة فوز).
-- `SET_GUILD_LEVEL`: تعديل نقاط أو مستوى قبيلة يدوياً.
+| Component | Technology | Primary Function |
+| :--- | :--- | :--- |
+| **Persistence** | MongoDB | User Profiles, Guilds, Manga Metadata |
+| **Transient State** | SQLite | Chapter Queues, Processing Logs |
+| **Visuals** | Canvas/Sharp | Dynamic Card Generation |
+| **Hosting** | Docker | Hugging Face Spaces Compatibility |
 
-### ⚡ إدارة الفعاليات (Event Control)
-- `START_EVENT`: بدء فعالية فورية.
-- `SCHEDULE_EVENT`: جدولة فعالية مستقبلية (تاريخ البدء والانتهاء).
-- `CANCEL_EVENT`: إلغاء فعالية نشطة أو مجدولة.
-- `ADJUST_POINTS_MULTIPLIER`: تغيير مضاعف النقاط (مثلاً x3 أو x5) خلال الفعالية.
+## 🎨 Advanced Visual Engine and Scraper
 
-### ⚖️ إدارة المجتمع والعقوبات (Moderation)
-- `WARN_USER`: إرسال تحذير لمستخدم (حظر تلقائي عند الوصول لـ 3 تحذيرات).
-- `BAN_USER`: حظر مستخدم نهائياً وحذف بياناته فوراً.
-- `GIVE_POINTS`: توزيع نقاط (هدية) لمستخدم أو للجميع.
-- `PUBLISH_LEADERBOARD`: نشر قائمة المتصدرين الحالية.
-- `DELETE_MANGA`: حذف عمل وفصوله من النظام.
+The **Visual Engine** is designed with a dark anime wolf theme, featuring neon purple accents and minimalist aesthetics. Instead of heavy AI rendering at runtime, the bot uses optimized local templates to generate professional user profiles, leaderboard rankings, and reward notices. An aggressive cleanup mechanism ensures that temporary images are wiped from storage immediately after posting, maintaining a lean environment.
 
-## 🎨 المحرك البصري (Visual Engine)
-البوت يقوم بتوليد صور ديناميكية لكل مستخدم تشمل:
-- **Profile Card**: بطاقة هوية تحتوي على الرتبة، المستوى، الـ Streak، والنقاط.
-- **Mission Card**: بطاقة تعرض المهام اليومية المطلوبة بشكل جذاب.
+The **Smart Scraping Engine** provides comprehensive support for the most popular Arabic manga platforms. It is built to be resilient against website layout changes and is compatible with various themes such as Madara and MangaStream.
 
-## 👥 واجهة المستخدم المتقدمة (User API)
-- `GET /user/profile/:fbId`: الحصول على بطاقة المستخدم وصورته الشخصية.
-- `GET /user/missions/:fbId`: عرض المهام اليومية الحالية مع صورة مصممة.
-- `POST /user/read`: تسجيل قراءة فصل لتحديث الـ Streak والتقدم.
-- `GET /user/continue/:fbId`: الحصول على قائمة "أكمل القراءة".
-- `POST /user/daily-checkin`: تسجيل الحضور اليومي.
+| Supported Source | Description |
+| :--- | :--- |
+| **G-Manga** | Direct API integration for fast and reliable updates |
+| **Azora Manga** | Full support for one of the largest Arabic manga libraries |
+| **Manga Arab** | Optimized scraping for high-traffic Arabic manga content |
+| **Madara Themes** | Universal compatibility with standard manga site layouts |
 
-## 🛠️ أوامر المطور المتقدمة (Pro Dev Commands)
-عبر `POST /admin/dev-command`:
-- `GET_STATS`: إحصائيات شاملة (أعمال، فصول، متابعين، مستخدمين).
-- `GIVE_POINTS`: توزيع نقاط لمستخدم معين أو لجميع المستخدمين (هدايا).
-- `ADD_MISSION`: إضافة مهمة جديدة للنظام (يومية/أسبوعية).
-- `BROADCAST`: إرسال رسالة إشعار لجميع المتابعين.
-- `DELETE_MANGA`: حذف عمل وفصوله بالكامل.
+## 📊 Deployment and Community Engagement
 
-## 🎮 نظام التفاعل (Gamification)
-- **الرتب (Ranks)**:
-  - `Otaku Beginner` (Lvl 1-4)
-  - `Shadow Reader` (Lvl 5-14)
-  - `Manga Explorer` (Lvl 15-29)
-  - `Okami Warrior` (Lvl 30-49)
-  - `Okami King 🐺` (Lvl 50+)
+To deploy Okami Bot on **Hugging Face Spaces**, users should create a Space with the Docker SDK and configure the necessary environment variables. The system is pre-configured to bind to port 7860 and handle Facebook Webhook responses within one second to prevent timeout loops.
 
-## 👥 واجهة المستخدم (User API)
-- `GET /user/profile/:fbId`: عرض الملف الشخصي (نقاط، مستوى، رتبة).
-- `POST /user/daily-checkin`: تسجيل الدخول اليومي للحصول على الـ Streak.
-- `POST /user/request`: طلب مانهوا جديدة.
-- `POST /user/vote`: التصويت لطلب موجود لزيادة أولوية نشره.
+| Variable | Required Value |
+| :--- | :--- |
+| `FB_ACCESS_TOKEN` | Facebook Page Access Token |
+| `FB_PAGE_ID` | Your Facebook Page ID |
+| `FACEBOOK_VERIFY_TOKEN` | Webhook verification token |
+| `MONGODB_URI` | Connection string for MongoDB Cloud |
+| `ADMIN_ACTIVATION_KEY` | Key for administrative commands |
 
-## 👥 نظام المتابعة (User Follow)
-يمكن للمستخدمين المتابعة عبر `POST /user/follow`:
-- **Body**: `{ "userFbId": "ID", "mangaId": 1 }`
-سيصل للمستخدم إشعار تلقائي فور نشر فصل جديد من العمل المختار.
-
-## 🛠️ التشغيل
-1. قم بتثبيت التبعيات:
-   ```bash
-   pnpm install
-   ```
-2. قم بضبط الإعدادات في ملف `.env`:
-   - `FB_ACCESS_TOKEN`: توكن فيسبوك (Page Access Token).
-   - `FB_PAGE_ID`: معرف الصفحة.
-
-3. ابدأ تشغيل البوت:
-   ```bash
-   npm start
-   ```
-
-## 🎛️ واجهة الإدارة (Admin Mode)
-لإضافة مانهوا جديدة للنشر، استخدم الـ API التالي:
-- **Endpoint**: `POST /admin/add-manga`
-- **Body**:
-  ```json
-  {
-    "activationKey": "chaouni_x_2013-2",
-    "url": "https://azoramoon.com/manga/title-here/"
-  }
-  ```
-
-## 📁 هيكل المشروع
-- `src/modules`: المحركات الأساسية (Scraper, Publisher, Processor, Queue).
-- `src/services`: خدمات الإدارة والذاكرة.
-- `src/database`: قاعدة بيانات SQLite لتخزين الحالات.
-- `src/temp`: مجلد مؤقت لمعالجة الصور (يتم حذفه تلقائياً بعد النشر).
+Okami Bot fosters a competitive community through its **Gamification System**. Users can progress through ranks from *Otaku Beginner* to the ultimate *Okami King 🐺*. The integrated **Guild System** allows fans to form teams and compete for weekly leaderboard dominance, while the **Streak Engine** rewards consistent engagement and reading.
 
 ---
-✨ تم التطوير بواسطة Manus ليكون الحل الأمثل للنشر التلقائي ✨
+✨ **Developed by Manus** - The most advanced solution for automated manga communities. ✨

@@ -52,7 +52,7 @@ export class ScraperEngine {
         }
     }
 
-    async getMangaDetails(sourceId, mangaUrl) {
+    async parseManga(mangaUrl) {
         try {
             const { data } = await axios.get(mangaUrl, {
                 headers: { 'User-Agent': config.scraping.userAgent }
@@ -60,6 +60,7 @@ export class ScraperEngine {
             const $ = cheerio.load(data);
 
             const title = $('h1').text().trim();
+            const slug = mangaUrl.split('/').filter(Boolean).pop();
             const coverUrl = $('.summary_image img').attr('src');
             const status = $('.post-status .summary-content').text().trim();
             
@@ -71,11 +72,15 @@ export class ScraperEngine {
                 if (url) chapters.push({ url, number });
             });
 
-            return { title, coverUrl, status, chapters: chapters.reverse() };
+            return { title, slug, coverUrl, status, chapters: chapters.reverse(), sourceKey: new URL(mangaUrl).hostname };
         } catch (error) {
-            logger.error(`Failed to get details from ${mangaUrl}: ${error.message}`);
+            logger.error(`Failed to parse manga from ${mangaUrl}: ${error.message}`);
             throw error;
         }
+    }
+
+    async getMangaDetails(sourceId, mangaUrl) {
+        return this.parseManga(mangaUrl);
     }
 
     async parseChapterImages(sourceId, chapterUrl) {
