@@ -14,22 +14,34 @@ export class ScraperEngine {
 
         try {
             let searchUrl = '';
-            if (sourceId === 'mangaarab') {
-                searchUrl = `${source.url}/?s=${encodeURIComponent(query)}`;
-            } else {
-                searchUrl = `${source.url}/?s=${encodeURIComponent(query)}&post_type=wp-manga`;
+            // Specialized search URLs for popular Arabic sites
+            switch(sourceId) {
+                case 'mangaarab':
+                    searchUrl = `${source.url}/?s=${encodeURIComponent(query)}`;
+                    break;
+                case 'gmanga':
+                    searchUrl = `${source.url}/api/mangas/search?query=${encodeURIComponent(query)}`;
+                    break;
+                default:
+                    searchUrl = `${source.url}/?s=${encodeURIComponent(query)}&post_type=wp-manga`;
             }
 
             const { data } = await axios.get(searchUrl, {
                 headers: { 'User-Agent': config.scraping.userAgent }
             });
+            
+            // Handle JSON response for modern sites like G-Manga
+            if (typeof data === 'object' && data.mangas) {
+                return data.mangas.map(m => ({ title: m.title, url: `${source.url}/mangas/${m.id}` }));
+            }
+
             const $ = cheerio.load(data);
             const results = [];
 
-            // هذا الجزء يحتاج لتخصيص بناءً على هيكلية كل موقع
-            $('.search-wrap .manga-item, .c-tabs-item__content').each((i, el) => {
-                const title = $(el).find('h3 a, .post-title a').text().trim();
-                const url = $(el).find('h3 a, .post-title a').attr('href');
+            // Universal selector for Madara and MangaStream themes
+            $('.search-wrap .manga-item, .c-tabs-item__content, .list-upd .bs, .list-manga .manga-item').each((i, el) => {
+                const title = $(el).find('h3 a, .post-title a, .tt a').text().trim();
+                const url = $(el).find('h3 a, .post-title a, .tt a').attr('href');
                 if (title && url) results.push({ title, url });
             });
 
