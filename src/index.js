@@ -219,22 +219,29 @@ app.post('/webhook', (req, res) => {
     const body = req.body;
     if (body.object === 'page') {
         res.status(200).send('EVENT_RECEIVED');
+        
+        // Asynchronous processing loop
         (async () => {
-            try {
-                for (const entry of body.entry) {
+            for (const entry of body.entry) {
+                try {
                     if (!entry.messaging) continue;
                     const webhook_event = entry.messaging[0];
                     const sender_id = webhook_event.sender.id;
-                    if (webhook_event.message && webhook_event.message.text) {
+                    
+                    if (webhook_event.message?.text) {
                         const responseText = await DialogueService.handleMessage(sender_id, webhook_event.message.text);
-                        if (responseText) await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                        if (responseText) {
+                            await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                        }
                     }
+                } catch (error) {
+                    logger.error(`[Webhook Entry Error] Sender ${entry?.messaging?.[0]?.sender?.id}: ${error.message}`);
                 }
-            } catch (error) {
-                logger.error(`Background Webhook Error: ${error.message}`);
             }
         })();
-    } else res.sendStatus(404);
+    } else {
+        res.sendStatus(404);
+    }
 });
 
 const startServer = (port) => {

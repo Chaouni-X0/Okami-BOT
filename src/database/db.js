@@ -3,14 +3,16 @@ import path from 'path';
 import fs from 'fs';
 import logger from '../utils/logger.js';
 
-const dbPath = path.resolve('./src/database/okami.db');
+// Use /data for persistence on Hugging Face
+const dbPath = path.resolve(process.env.DATA_DIR || '/data', 'okami.db');
 const dbDir = path.dirname(dbPath);
 
 if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
 }
 
-const db = new Database(dbPath);
+const db = new Database(dbPath, { timeout: 10000 });
+db.pragma('journal_mode = WAL'); // Bulletproof concurrency
 
 // تهيئة الجداول
 db.exec(`
@@ -28,7 +30,7 @@ db.exec(`
 
     CREATE TABLE IF NOT EXISTS publish_queue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        manga_id INTEGER,
+        manga_id TEXT, -- REPAIRED: Changed from INTEGER to TEXT to match slugs
         chapter_number REAL,
         chapter_url TEXT,
         source_key TEXT,

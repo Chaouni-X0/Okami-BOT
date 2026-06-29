@@ -62,19 +62,21 @@ export class ChapterProcessor {
                     const response = await axios({
                         url: imgUrl,
                         responseType: 'arraybuffer',
-                        headers: { 'User-Agent': config.scraping.userAgent }
+                        headers: { 'User-Agent': config.scraping.userAgent },
+                        timeout: 15000, // Bulletproof timeout
+                        validateStatus: (status) => status === 200
                     });
 
                     const parts = await this.sliceImage(response.data, chapterDir, i);
-                    processedImages.push(...parts);
+                    if (parts.length > 0) processedImages.push(...parts);
 
                 } catch (error) {
-                    console.error(`Failed to process image ${i}:`, error.message);
+                    console.error(`[Processor] Failed image ${i} at ${imageUrls[i]}: ${error.message}`);
                 }
             }
             return { chapterDir, images: processedImages };
         } catch (error) {
-            // Aggressive fail-safe cleanup
+            console.error(`[Processor] Chapter processing failed: ${error.message}`);
             this.cleanup(chapterDir);
             throw error;
         }

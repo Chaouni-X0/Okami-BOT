@@ -9,30 +9,39 @@ export class FacebookPublisher {
     static accessToken = config.facebook.accessToken;
 
     static async publishChapter(imagePaths, message) {
+        const photoIds = [];
         try {
-            const photoIds = [];
             for (const imgPath of imagePaths) {
+                if (!fs.existsSync(imgPath)) {
+                    logger.warn(`[Publisher] Skipping missing image: ${imgPath}`);
+                    continue;
+                }
+                
                 const formData = new FormData();
                 formData.append('source', fs.createReadStream(imgPath));
                 formData.append('published', 'false');
                 formData.append('access_token', this.accessToken);
 
                 const res = await axios.post(`${this.baseUrl}/photos`, formData, {
-                    headers: formData.getHeaders()
+                    headers: formData.getHeaders(),
+                    timeout: 30000 // 30s timeout for large uploads
                 });
                 photoIds.push({ media_fbid: res.data.id });
             }
+
+            if (photoIds.length === 0) throw new Error("No images were successfully uploaded to Facebook.");
 
             const postRes = await axios.post(`${this.baseUrl}/feed`, {
                 message: message,
                 attached_media: photoIds,
                 access_token: this.accessToken
-            });
+            }, { timeout: 15000 });
 
             return postRes.data.id;
         } catch (error) {
-            logger.error(`Facebook publishing error: ${error.response?.data?.error?.message || error.message}`);
-            throw error;
+            const errMsg = error.response?.data?.error?.message || error.message;
+            logger.error(`[Publisher] Facebook Critical Error: ${errMsg}`);
+            throw new Error(`Facebook Publishing Failed: ${errMsg}`);
         }
     }
 
