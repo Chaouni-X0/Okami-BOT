@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "start": "node src/index.enhanced.js",
+    "dev": "nodemon src/index.enhanced.js",
+    "dashboard": "streamlit run dashboard.py"
   },
   "keywords": [],
   "author": "",
