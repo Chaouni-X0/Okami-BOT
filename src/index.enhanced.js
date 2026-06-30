@@ -205,7 +205,8 @@ const startServer = (port) => {
                     const response = await axios.get(`https://graph.facebook.com/${v}/me`, {
                         params: { access_token: cleanToken },
                         httpsAgent: agent,
-                        timeout: 10000
+                        timeout: 20000,
+                        family: 4
                     });
                     logger.info(`[ULTRA-CHECK] Success via ${v}! Connected as: ${response.data.name}`);
                     return;

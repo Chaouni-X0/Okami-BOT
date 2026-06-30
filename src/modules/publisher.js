@@ -45,25 +45,25 @@ export class FacebookPublisher {
 
         for (const version of versions) {
             try {
-                logger.info(`[ULTRA-SEND] Attempting to send via ${version}...`);
+                logger.info(`[ULTRA-SEND] Attempting to send via ${version} (IPv4 Forced)...`);
                 await axios.post(`https://graph.facebook.com/${version}/me/messages`, {
                     recipient: { id: recipientId },
                     message: { text: text }
                 }, {
                     params: { access_token: this.accessToken },
                     httpsAgent: httpsAgent,
-                    timeout: 15000 // مهلة أقصر لكل محاولة لسرعة التبديل
+                    timeout: 30000,
+                    family: 4 // إجبار استخدام IPv4 لتجنب مشاكل الشبكة السحابية
                 });
                 logger.info(`[ULTRA-SEND] Success via ${version}!`);
                 return true;
             } catch (error) {
                 lastError = error;
                 logger.warn(`[ULTRA-SEND] Failed via ${version}: ${error.message}`);
-                // استمرار للمحاولة التالية
             }
         }
 
-        logger.error(`[ULTRA-SEND] ALL ATTEMPTS FAILED. Last error: ${lastError.response?.data?.error?.message || lastError.message}`);
+        logger.error(`[ULTRA-SEND] ALL ATTEMPTS FAILED. Last error: ${lastError.message}`);
         return false;
     }
 
