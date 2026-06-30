@@ -175,6 +175,17 @@ setInterval(() => {
 const startServer = (port) => {
     const server = app.listen(port, async () => {
         logger.info(`Okami Bot API running on port ${port}`);
+        
+        // --- اختبار ذاتي للـ Facebook Token ---
+        try {
+            logger.info('[SELF-CHECK] Testing Facebook Access Token...');
+            const response = await axios.get(`https://graph.facebook.com/v19.0/me?access_token=${config.facebook.accessToken}`);
+            logger.info(`[SELF-CHECK] Success! Connected as: ${response.data.name} (ID: ${response.data.id})`);
+        } catch (error) {
+            logger.error(`[SELF-CHECK] FAILED! Facebook Token Error: ${error.response?.data?.error?.message || error.message}`);
+            logger.error('[SELF-CHECK] Please check your FACEBOOK_ACCESS_TOKEN in Secrets.');
+        }
+
         try {
             await QueueSystem.resumeQueue();
         } catch (e) {
