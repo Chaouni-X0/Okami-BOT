@@ -146,6 +146,21 @@ app.get('/status', (req, res) => {
     });
 });
 
+// --- مسار اختبار يدوي لإرسال رسالة ترحيبية ---
+app.get('/test-send', async (req, res) => {
+    const sender_id = req.query.uid;
+    if (!sender_id) return res.send('Please provide ?uid=YOUR_FACEBOOK_ID');
+    
+    logger.info(`[TEST-SEND] Attempting to send test message to ${sender_id}...`);
+    const result = await FacebookPublisher.sendDirectMessage(sender_id, "🐺 أهلاً بك! أنا بوت أوكامي، وهذا اختبار إرسال يدوي بنجاح.");
+    
+    if (result) {
+        res.send('✅ Success! Check your Facebook Messenger.');
+    } else {
+        res.status(500).send('❌ Failed! Check Hugging Face Logs for error details.');
+    }
+});
+
 // 6. إدارة الموارد (مهمة التنظيف)
 const TEMP_DIR = config.storage.tempDir;
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -187,7 +202,7 @@ const startServer = (port) => {
             const response = await axios.get(`https://graph.facebook.com/v19.0/me`, {
                 params: { access_token: cleanToken },
                 httpsAgent: agent,
-                timeout: 10000
+                timeout: 30000 // زيادة المهلة لـ 30 ثانية
             });
             logger.info(`[SELF-CHECK] Success! Connected as: ${response.data.name} (ID: ${response.data.id})`);
         } catch (error) {
