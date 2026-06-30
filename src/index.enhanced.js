@@ -53,81 +53,38 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-// --- سجل شامل لجميع الطلبات الواردة للتشخيص ---
-app.use((req, res, next) => {
-    // طباعة كل الطلبات التي تصل للمسارات المتعلقة بالـ Webhook للتشخيص
-    if (req.path.includes('webhook')) {
-        logger.info(`[DEBUG-ROUTER] Request Received: ${req.method} ${req.url}`);
-        logger.info(`[DEBUG-ROUTER] Headers: ${JSON.stringify(req.headers)}`);
-    }
-    next();
-});
-
-// 3. Webhook فيسبوك (التحقق)
+// نظام استقبال الـ Webhook (نسخة نظيفة)
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
-    if (mode && token) {
-        logger.info(`[DEBUG-VERIFY] Mode: ${mode}, Received Token: "${token}", Expected Token: "${config.facebook.verifyToken}"`);
-        if (mode === 'subscribe' && token === config.facebook.verifyToken) {
-            logger.info('[DEBUG-VERIFY] Success! Tokens match.');
-            res.status(200).send(challenge);
-        } else {
-            logger.warn('[DEBUG-VERIFY] Failed! Tokens do NOT match.');
-            res.sendStatus(403);
-        }
+    if (mode === 'subscribe' && token === config.facebook.verifyToken) {
+        logger.info('[WEBHOOK] Verified successfully.');
+        return res.status(200).send(challenge);
     }
+    res.sendStatus(403);
 });
 
-// 4. معالجة رسائل Webhook (بشكل غير متزامن)
 app.post('/webhook', (req, res) => {
     const body = req.body;
-
-    // --- DEBUG: طباعة محتوى الـ Webhook الوارد لمراقبة الرسائل في السجلات ---
-    logger.info(`[WEBHOOK] Received event: ${JSON.stringify(body)}`);
-
     if (body.object === 'page') {
-        res.status(200).send('EVENT_RECEIVED');
-
-        (async () => {
-            try {
-                for (const entry of body.entry) {
-                    if (!entry.messaging) {
-                        logger.warn(`[WEBHOOK] Entry received but no messaging data found.`);
-                        continue;
-                    }
-                    
-                    for (const webhook_event of entry.messaging) {
-                        const sender_id = webhook_event.sender.id;
-                        logger.info(`[WEBHOOK] Message from sender: ${sender_id}`);
-
-                        if (webhook_event.message && webhook_event.message.text) {
-                            const incomingText = webhook_event.message.text;
-                            logger.info(`[WEBHOOK] Text received: "${incomingText}"`);
-
-                            const responseText = await DialogueServiceEnhanced.handleMessage(sender_id, incomingText);
-                            
-                            if (responseText) {
-                                logger.info(`[WEBHOOK] Sending response to ${sender_id}...`);
-                                const result = await FacebookPublisher.sendDirectMessage(sender_id, responseText);
-                                logger.info(`[WEBHOOK] Response sent successfully. Result: ${JSON.stringify(result)}`);
-                            } else {
-                                logger.warn(`[WEBHOOK] No response text generated for message.`);
-                            }
-                        } else {
-                            logger.warn(`[WEBHOOK] Received event is not a text message.`);
+        body.entry.forEach(async (entry) => {
+            if (entry.messaging) {
+                for (const event of entry.messaging) {
+                    const senderId = event.sender.id;
+                    if (event.message && event.message.text) {
+                        logger.info(`[MSG] Received from ${senderId}: "${event.message.text}"`);
+                        const responseText = await DialogueServiceEnhanced.handleMessage(senderId, event.message.text);
+                        if (responseText) {
+                            await FacebookPublisher.sendDirectMessage(senderId, responseText);
                         }
                     }
                 }
-            } catch (error) {
-                logger.error(`[WEBHOOK] Background Error: ${error.message}`);
-                logger.error(error.stack);
             }
-        })();
+        });
+        res.status(200).send('EVENT_RECEIVED');
     } else {
-        logger.warn(`[WEBHOOK] Object is not 'page': ${body.object}`);
         res.sendStatus(404);
     }
 });
@@ -193,28 +150,19 @@ const startServer = (port) => {
     const server = app.listen(port, async () => {
         logger.info(`Okami Bot API running on port ${port}`);
         
-        // --- اختبار ذاتي للـ Facebook Token (نسخة ULTRA) ---
+        // --- اختبار ذاتي للـ Facebook Token (نسخة مبسطة) ---
         (async () => {
-            const versions = ['v25.0', 'v24.0', 'v23.0', 'v22.0'];
-            const cleanToken = config.facebook.accessToken.trim();
-            const agent = new https.Agent({ rejectUnauthorized: false });
-            
-            for (const v of versions) {
-                try {
-                    logger.info(`[ULTRA-CHECK] Testing via ${v}...`);
-                    const response = await axios.get(`https://graph.facebook.com/${v}/me`, {
-                        params: { access_token: cleanToken },
-                        httpsAgent: agent,
-                        timeout: 20000,
-                        family: 4
-                    });
-                    logger.info(`[ULTRA-CHECK] Success via ${v}! Connected as: ${response.data.name}`);
-                    return;
-                } catch (e) {
-                    logger.warn(`[ULTRA-CHECK] ${v} failed: ${e.message}`);
-                }
+            try {
+                const cleanToken = config.facebook.accessToken.trim();
+                logger.info('[CHECK] Testing Facebook Access Token via v21.0...');
+                const response = await axios.get('https://graph.facebook.com/v21.0/me', {
+                    params: { access_token: cleanToken },
+                    timeout: 10000
+                });
+                logger.info(`[CHECK] Success! Connected as: ${response.data.name}`);
+            } catch (e) {
+                logger.error(`[CHECK] Failed: ${e.response?.data?.error?.message || e.message}`);
             }
-            logger.error('[ULTRA-CHECK] ALL VERSIONS FAILED. Check network/token.');
         })();
 
         try {

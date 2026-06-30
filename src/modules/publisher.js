@@ -40,31 +40,24 @@ export class FacebookPublisher {
     }
 
     static async sendDirectMessage(recipientId, text) {
-        const versions = ['v25.0', 'v24.0', 'v23.0', 'v22.0'];
-        let lastError = null;
-
-        for (const version of versions) {
-            try {
-                logger.info(`[ULTRA-SEND] Attempting to send via ${version} (IPv4 Forced)...`);
-                await axios.post(`https://graph.facebook.com/${version}/me/messages`, {
+        try {
+            logger.info(`[SEND] Sending to ${recipientId} via v21.0...`);
+            const response = await axios({
+                method: 'POST',
+                url: `https://graph.facebook.com/v21.0/me/messages`,
+                params: { access_token: this.accessToken },
+                data: {
                     recipient: { id: recipientId },
                     message: { text: text }
-                }, {
-                    params: { access_token: this.accessToken },
-                    httpsAgent: httpsAgent,
-                    timeout: 30000,
-                    family: 4 // إجبار استخدام IPv4 لتجنب مشاكل الشبكة السحابية
-                });
-                logger.info(`[ULTRA-SEND] Success via ${version}!`);
-                return true;
-            } catch (error) {
-                lastError = error;
-                logger.warn(`[ULTRA-SEND] Failed via ${version}: ${error.message}`);
-            }
+                },
+                timeout: 10000
+            });
+            logger.info(`[SEND] Success! Message sent to ${recipientId}`);
+            return true;
+        } catch (error) {
+            logger.error(`[SEND] Failed: ${error.response?.data?.error?.message || error.message}`);
+            return false;
         }
-
-        logger.error(`[ULTRA-SEND] ALL ATTEMPTS FAILED. Last error: ${lastError.message}`);
-        return false;
     }
 
     /**
