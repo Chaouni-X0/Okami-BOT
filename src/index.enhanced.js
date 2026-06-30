@@ -1,5 +1,6 @@
 import express from 'express';
 import axios from 'axios';
+import https from 'https';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { config, validateConfig } from './config/config.enhanced.js';
 import db from './database/db.js';
@@ -177,13 +178,23 @@ const startServer = (port) => {
     const server = app.listen(port, async () => {
         logger.info(`Okami Bot API running on port ${port}`);
         
-        // --- اختبار ذاتي للـ Facebook Token ---
+        // --- اختبار ذاتي للـ Facebook Token (نسخة مطورة) ---
         try {
             logger.info('[SELF-CHECK] Testing Facebook Access Token...');
-            const response = await axios.get(`https://graph.facebook.com/v19.0/me?access_token=${config.facebook.accessToken}`);
+            const cleanToken = config.facebook.accessToken.trim();
+            const agent = new https.Agent({ rejectUnauthorized: false });
+            
+            const response = await axios.get(`https://graph.facebook.com/v19.0/me`, {
+                params: { access_token: cleanToken },
+                httpsAgent: agent,
+                timeout: 10000
+            });
             logger.info(`[SELF-CHECK] Success! Connected as: ${response.data.name} (ID: ${response.data.id})`);
         } catch (error) {
             logger.error(`[SELF-CHECK] FAILED! Facebook Token Error: ${error.response?.data?.error?.message || error.message}`);
+            if (error.code === 'EPROTO') {
+                logger.error('[SELF-CHECK] Protocol Error detected. This usually means the Token is malformed or invalid.');
+            }
             logger.error('[SELF-CHECK] Please check your FACEBOOK_ACCESS_TOKEN in Secrets.');
         }
 
