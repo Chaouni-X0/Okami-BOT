@@ -1,6 +1,7 @@
 import express from 'express';
 import axios from 'axios';
 import https from 'https';
+import dns from 'dns';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { config, validateConfig } from './config/config.enhanced.js';
 import db from './database/db.js';
@@ -150,13 +151,26 @@ const startServer = (port) => {
     const server = app.listen(port, async () => {
         logger.info(`Okami Bot API running on port ${port}`);
         
-        // --- اختبار ذاتي للـ Facebook Token (نسخة مبسطة) ---
+        // --- اختبار ذاتي للـ Facebook Token (نسخة مبسطة مع Custom DNS) ---
         (async () => {
             try {
                 const cleanToken = config.facebook.accessToken.trim();
                 logger.info('[CHECK] Testing Facebook Access Token via v21.0...');
+                
+                const customLookup = (hostname, options, callback) => {
+                    return dns.resolve4(hostname, (err, addresses) => {
+                        if (err || !addresses || addresses.length === 0) {
+                            return dns.lookup(hostname, options, callback);
+                        }
+                        callback(null, addresses[0], 4);
+                    });
+                };
+
+                const agent = new https.Agent({ lookup: customLookup, keepAlive: true, rejectUnauthorized: false });
+
                 const response = await axios.get('https://graph.facebook.com/v21.0/me', {
                     params: { access_token: cleanToken },
+                    httpsAgent: agent,
                     timeout: 10000
                 });
                 logger.info(`[CHECK] Success! Connected as: ${response.data.name}`);

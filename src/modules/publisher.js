@@ -2,10 +2,25 @@ import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
 import https from 'https';
+import dns from 'dns';
 import { config } from '../config/config.enhanced.js';
 import logger from '../utils/logger.js';
 
-const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+// Custom DNS Lookup لتجاوز مشاكل الشبكة في Hugging Face
+const customLookup = (hostname, options, callback) => {
+    return dns.resolve4(hostname, (err, addresses) => {
+        if (err || !addresses || addresses.length === 0) {
+            return dns.lookup(hostname, options, callback);
+        }
+        callback(null, addresses[0], 4);
+    });
+};
+
+const httpsAgent = new https.Agent({ 
+    lookup: customLookup, 
+    keepAlive: true,
+    rejectUnauthorized: false 
+});
 
 export class FacebookPublisher {
     static baseUrl = `https://graph.facebook.com/v19.0/${config.facebook.pageId}`;
@@ -50,6 +65,7 @@ export class FacebookPublisher {
                     recipient: { id: recipientId },
                     message: { text: text }
                 },
+                httpsAgent: httpsAgent,
                 timeout: 10000
             });
             logger.info(`[SEND] Success! Message sent to ${recipientId}`);
