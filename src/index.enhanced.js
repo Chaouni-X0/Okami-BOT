@@ -195,7 +195,7 @@ const startServer = (port) => {
         
         // --- اختبار ذاتي للـ Facebook Token (نسخة ULTRA) ---
         (async () => {
-            const versions = ['v25.0', 'v22.0', 'v21.0', 'v19.0'];
+            const versions = ['v25.0', 'v24.0', 'v23.0', 'v22.0'];
             const cleanToken = config.facebook.accessToken.trim();
             const agent = new https.Agent({ rejectUnauthorized: false });
             
