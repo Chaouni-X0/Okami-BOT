@@ -1,26 +1,8 @@
 import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
-import https from 'https';
-import dns from 'dns';
 import { config } from '../config/config.enhanced.js';
 import logger from '../utils/logger.js';
-
-// Custom DNS Lookup لتجاوز مشاكل الشبكة في Hugging Face
-const customLookup = (hostname, options, callback) => {
-    return dns.resolve4(hostname, (err, addresses) => {
-        if (err || !addresses || addresses.length === 0) {
-            return dns.lookup(hostname, options, callback);
-        }
-        callback(null, addresses[0], 4);
-    });
-};
-
-const httpsAgent = new https.Agent({ 
-    lookup: customLookup, 
-    keepAlive: true,
-    rejectUnauthorized: false 
-});
 
 export class FacebookPublisher {
     static baseUrl = `https://graph.facebook.com/v19.0/${config.facebook.pageId}`;
@@ -36,7 +18,8 @@ export class FacebookPublisher {
                 formData.append('access_token', this.accessToken);
 
                 const res = await axios.post(`${this.baseUrl}/photos`, formData, {
-                    headers: formData.getHeaders()
+                    headers: formData.getHeaders(),
+                    timeout: 30000
                 });
                 photoIds.push({ media_fbid: res.data.id });
             }
@@ -45,7 +28,7 @@ export class FacebookPublisher {
                 message: message,
                 attached_media: photoIds,
                 access_token: this.accessToken
-            });
+            }, { timeout: 20000 });
 
             return postRes.data.id;
         } catch (error) {
@@ -57,17 +40,12 @@ export class FacebookPublisher {
     static async sendDirectMessage(recipientId, text) {
         try {
             logger.info(`[SEND] Sending to ${recipientId} via v21.0...`);
-            const response = await axios({
-                method: 'POST',
-                url: `https://graph.facebook.com/v21.0/me/messages`,
-                params: { access_token: this.accessToken },
-                data: {
-                    recipient: { id: recipientId },
-                    message: { text: text }
-                },
-                httpsAgent: httpsAgent,
-                timeout: 10000
-            });
+            const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${this.accessToken}`;
+            const response = await axios.post(url, {
+                recipient: { id: recipientId },
+                message: { text: text }
+            }, { timeout: 15000 });
+            
             logger.info(`[SEND] Success! Message sent to ${recipientId}`);
             return true;
         } catch (error) {
