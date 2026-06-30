@@ -5,7 +5,7 @@ import logger from '../utils/logger.js';
 
 export class FacebookPublisher {
     static baseUrl = `https://graph.facebook.com/v19.0/${config.facebook.pageId}`;
-    static accessToken = config.facebook.accessToken.trim();
+    static accessToken = process.env.FACEBOOK_ACCESS_TOKEN.trim();
 
     static async publishChapter(imagePaths, message) {
         try {
@@ -115,14 +115,30 @@ ${chapters.map(c => `🔹 الفصل ${c.chapter_number}: https://facebook.com/$
             // ملاحظة: فيسبوك لديه حد لعدد الكلمات، لذا نقوم بتقليص الرسالة إذا كانت طويلة جداً
             const finalMessage = message.length > 8000 ? message.substring(0, 7900) + "...\n(يتبع في تعليق)" : message;
 
-            const res = await axios.post(`${this.baseUrl}/feed`, {
-                message: finalMessage,
-                access_token: this.accessToken
+            const postResponse = await fetch(`${this.baseUrl}/feed`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                },
+                body: JSON.stringify({
+                    message: finalMessage,
+                    access_token: this.accessToken
+                }),
+                redirect: 'follow',
+                signal: AbortSignal.timeout(30000)
             });
+
+            if (!postResponse.ok) {
+                const errText = await postResponse.text();
+                throw new Error(`Feed Post Failed: ${postResponse.status} - ${errText}`);
+            }
+
+            const res = await postResponse.json();
 
             return res.data.id;
         } catch (error) {
-            logger.error(`Facebook aggregation error: ${error.response?.data?.error?.message || error.message}`);
+            logger.error(`Facebook aggregation error: ${error.message}`);
             return null;
         }
     }
