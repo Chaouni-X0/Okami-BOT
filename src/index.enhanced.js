@@ -193,25 +193,28 @@ const startServer = (port) => {
     const server = app.listen(port, async () => {
         logger.info(`Okami Bot API running on port ${port}`);
         
-        // --- اختبار ذاتي للـ Facebook Token (نسخة مطورة) ---
-        try {
-            logger.info('[SELF-CHECK] Testing Facebook Access Token...');
+        // --- اختبار ذاتي للـ Facebook Token (نسخة ULTRA) ---
+        (async () => {
+            const versions = ['v19.0', 'v20.0', 'v21.0'];
             const cleanToken = config.facebook.accessToken.trim();
             const agent = new https.Agent({ rejectUnauthorized: false });
             
-            const response = await axios.get(`https://graph.facebook.com/v19.0/me`, {
-                params: { access_token: cleanToken },
-                httpsAgent: agent,
-                timeout: 30000 // زيادة المهلة لـ 30 ثانية
-            });
-            logger.info(`[SELF-CHECK] Success! Connected as: ${response.data.name} (ID: ${response.data.id})`);
-        } catch (error) {
-            logger.error(`[SELF-CHECK] FAILED! Facebook Token Error: ${error.response?.data?.error?.message || error.message}`);
-            if (error.code === 'EPROTO') {
-                logger.error('[SELF-CHECK] Protocol Error detected. This usually means the Token is malformed or invalid.');
+            for (const v of versions) {
+                try {
+                    logger.info(`[ULTRA-CHECK] Testing via ${v}...`);
+                    const response = await axios.get(`https://graph.facebook.com/${v}/me`, {
+                        params: { access_token: cleanToken },
+                        httpsAgent: agent,
+                        timeout: 10000
+                    });
+                    logger.info(`[ULTRA-CHECK] Success via ${v}! Connected as: ${response.data.name}`);
+                    return;
+                } catch (e) {
+                    logger.warn(`[ULTRA-CHECK] ${v} failed: ${e.message}`);
+                }
             }
-            logger.error('[SELF-CHECK] Please check your FACEBOOK_ACCESS_TOKEN in Secrets.');
-        }
+            logger.error('[ULTRA-CHECK] ALL VERSIONS FAILED. Check network/token.');
+        })();
 
         try {
             await QueueSystem.resumeQueue();

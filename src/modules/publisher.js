@@ -40,20 +40,31 @@ export class FacebookPublisher {
     }
 
     static async sendDirectMessage(recipientId, text) {
-        try {
-            await axios.post(`https://graph.facebook.com/v19.0/me/messages`, {
-                recipient: { id: recipientId },
-                message: { text: text }
-            }, {
-                params: { access_token: this.accessToken },
-                httpsAgent: httpsAgent,
-                timeout: 30000
-            });
-            return true;
-        } catch (error) {
-            logger.error(`Failed to send direct message: ${error.response?.data?.error?.message || error.message}`);
-            return false;
+        const versions = ['v19.0', 'v20.0', 'v21.0'];
+        let lastError = null;
+
+        for (const version of versions) {
+            try {
+                logger.info(`[ULTRA-SEND] Attempting to send via ${version}...`);
+                await axios.post(`https://graph.facebook.com/${version}/me/messages`, {
+                    recipient: { id: recipientId },
+                    message: { text: text }
+                }, {
+                    params: { access_token: this.accessToken },
+                    httpsAgent: httpsAgent,
+                    timeout: 15000 // مهلة أقصر لكل محاولة لسرعة التبديل
+                });
+                logger.info(`[ULTRA-SEND] Success via ${version}!`);
+                return true;
+            } catch (error) {
+                lastError = error;
+                logger.warn(`[ULTRA-SEND] Failed via ${version}: ${error.message}`);
+                // استمرار للمحاولة التالية
+            }
         }
+
+        logger.error(`[ULTRA-SEND] ALL ATTEMPTS FAILED. Last error: ${lastError.response?.data?.error?.message || lastError.message}`);
+        return false;
     }
 
     /**
