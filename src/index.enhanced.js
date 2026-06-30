@@ -30,7 +30,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // زيادة حد المستمعين لتجنب تحذيرات Memory Leak الناتجة عن اتصالات الـ Proxy المكثفة لـ Streamlit
 import { EventEmitter } from 'events';
-EventEmitter.defaultMaxListeners = 100;
+EventEmitter.defaultMaxListeners = 0; // غير محدود لمنع أي ضياع للطلبات
 
 const app = express();
 
@@ -50,6 +50,14 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+
+// --- سجل شامل لجميع الطلبات الواردة للتشخيص ---
+app.use((req, res, next) => {
+    if (req.path === '/webhook') {
+        logger.info(`[INCOMING] Webhook Request: ${req.method} ${req.path}`);
+    }
+    next();
+});
 
 // 3. Webhook فيسبوك (التحقق)
 app.get('/webhook', (req, res) => {
