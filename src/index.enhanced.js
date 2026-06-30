@@ -72,34 +72,49 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
     const body = req.body;
 
+    // --- DEBUG: طباعة محتوى الـ Webhook الوارد لمراقبة الرسائل في السجلات ---
+    logger.info(`[WEBHOOK] Received event: ${JSON.stringify(body)}`);
+
     if (body.object === 'page') {
-        // الرد الفوري على فيسبوك
         res.status(200).send('EVENT_RECEIVED');
 
-        // المعالجة في الخلفية
         (async () => {
             try {
                 for (const entry of body.entry) {
-                    if (!entry.messaging) continue;
+                    if (!entry.messaging) {
+                        logger.warn(`[WEBHOOK] Entry received but no messaging data found.`);
+                        continue;
+                    }
                     
                     for (const webhook_event of entry.messaging) {
                         const sender_id = webhook_event.sender.id;
+                        logger.info(`[WEBHOOK] Message from sender: ${sender_id}`);
 
-                        // معالجة الرسائل النصية
                         if (webhook_event.message && webhook_event.message.text) {
-                            const responseText = await DialogueServiceEnhanced.handleMessage(sender_id, webhook_event.message.text);
+                            const incomingText = webhook_event.message.text;
+                            logger.info(`[WEBHOOK] Text received: "${incomingText}"`);
+
+                            const responseText = await DialogueServiceEnhanced.handleMessage(sender_id, incomingText);
                             
                             if (responseText) {
-                                await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                                logger.info(`[WEBHOOK] Sending response to ${sender_id}...`);
+                                const result = await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                                logger.info(`[WEBHOOK] Response sent successfully. Result: ${JSON.stringify(result)}`);
+                            } else {
+                                logger.warn(`[WEBHOOK] No response text generated for message.`);
                             }
+                        } else {
+                            logger.warn(`[WEBHOOK] Received event is not a text message.`);
                         }
                     }
                 }
             } catch (error) {
-                logger.error(`Background Webhook Error: ${error.message}`);
+                logger.error(`[WEBHOOK] Background Error: ${error.message}`);
+                logger.error(error.stack);
             }
         })();
     } else {
+        logger.warn(`[WEBHOOK] Object is not 'page': ${body.object}`);
         res.sendStatus(404);
     }
 });

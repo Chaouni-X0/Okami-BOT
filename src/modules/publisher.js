@@ -1,7 +1,7 @@
 import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
-import { config } from '../config/config.js';
+import { config } from '../config/config.enhanced.js';
 import logger from '../utils/logger.js';
 
 export class FacebookPublisher {
