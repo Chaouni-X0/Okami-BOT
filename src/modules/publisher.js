@@ -1,4 +1,3 @@
-import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
 import { config } from '../config/config.enhanced.js';
@@ -17,22 +16,48 @@ export class FacebookPublisher {
                 formData.append('published', 'false');
                 formData.append('access_token', this.accessToken);
 
-                const res = await axios.post(`${this.baseUrl}/photos`, formData, {
-                    headers: formData.getHeaders(),
-                    timeout: 30000
+                const response = await fetch(`${this.baseUrl}/photos`, {
+                    method: 'POST',
+                    headers: {
+                        ...formData.getHeaders(),
+                        'User-Agent': 'OkamiBot/5.0'
+                    },
+                    body: formData,
+                    signal: AbortSignal.timeout(60000)
                 });
-                photoIds.push({ media_fbid: res.data.id });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Photo Upload Failed: ${response.status} - ${errText}`);
+                }
+
+                const data = await response.json();
+                photoIds.push({ media_fbid: data.id });
             }
 
-            const postRes = await axios.post(`${this.baseUrl}/feed`, {
-                message: message,
-                attached_media: photoIds,
-                access_token: this.accessToken
-            }, { timeout: 20000 });
+            const postResponse = await fetch(`${this.baseUrl}/feed`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'OkamiBot/5.0'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    attached_media: photoIds,
+                    access_token: this.accessToken
+                }),
+                signal: AbortSignal.timeout(30000)
+            });
 
-            return postRes.data.id;
+            if (!postResponse.ok) {
+                const errText = await postResponse.text();
+                throw new Error(`Feed Post Failed: ${postResponse.status} - ${errText}`);
+            }
+
+            const postData = await postResponse.json();
+            return postData.id;
         } catch (error) {
-            logger.error(`Facebook publishing error: ${error.response?.data?.error?.message || error.message}`);
+            logger.error(`Facebook publishing error: ${error.message}`);
             throw error;
         }
     }
@@ -41,15 +66,29 @@ export class FacebookPublisher {
         try {
             logger.info(`[SEND] Sending to ${recipientId} via v21.0...`);
             const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${this.accessToken}`;
-            const response = await axios.post(url, {
-                recipient: { id: recipientId },
-                message: { text: text }
-            }, { timeout: 15000 });
             
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'OkamiBot/5.0'
+                },
+                body: JSON.stringify({
+                    recipient: { id: recipientId },
+                    message: { text: text }
+                }),
+                signal: AbortSignal.timeout(15000)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.text();
+                throw new Error(`Facebook API Error: ${response.status} - ${errorData}`);
+            }
+
             logger.info(`[SEND] Success! Message sent to ${recipientId}`);
             return true;
         } catch (error) {
-            logger.error(`[SEND] Failed: ${error.response?.data?.error?.message || error.message}`);
+            logger.error(`[SEND] Failed: ${error.message}`);
             return false;
         }
     }

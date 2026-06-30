@@ -1,9 +1,4 @@
-import dns from 'dns';
-dns.setDefaultResultOrder('ipv4first');
-
 import express from 'express';
-import axios from 'axios';
-import https from 'https';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { config, validateConfig } from './config/config.enhanced.js';
 import db from './database/db.js';
@@ -153,18 +148,25 @@ const startServer = (port) => {
     const server = app.listen(port, async () => {
         logger.info(`Okami Bot API running on port ${port}`);
         
-        // --- اختبار ذاتي للـ Facebook Token (نسخة جذريّة) ---
+        // --- اختبار ذاتي للـ Facebook Token (نسخة Native Fetch) ---
         (async () => {
             try {
                 const cleanToken = config.facebook.accessToken.trim();
                 logger.info('[CHECK] Testing Facebook Access Token via v21.0...');
-                const response = await axios.get('https://graph.facebook.com/v21.0/me', {
-                    params: { access_token: cleanToken },
-                    timeout: 15000
+                const response = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${cleanToken}`, {
+                    headers: { 'User-Agent': 'OkamiBot/5.0' },
+                    signal: AbortSignal.timeout(15000)
                 });
-                logger.info(`[CHECK] Success! Connected as: ${response.data.name}`);
+                
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Facebook API Error: ${response.status} - ${errText}`);
+                }
+
+                const data = await response.json();
+                logger.info(`[CHECK] Success! Connected as: ${data.name}`);
             } catch (e) {
-                logger.error(`[CHECK] Failed: ${e.response?.data?.error?.message || e.message}`);
+                logger.error(`[CHECK] Failed: ${e.message}`);
             }
         })();
 
