@@ -68,11 +68,12 @@ app.get('/webhook', (req, res) => {
     const challenge = req.query['hub.challenge'];
 
     if (mode && token) {
+        logger.info(`[DEBUG-VERIFY] Mode: ${mode}, Received Token: "${token}", Expected Token: "${config.facebook.verifyToken}"`);
         if (mode === 'subscribe' && token === config.facebook.verifyToken) {
-            logger.info('Webhook verified successfully!');
+            logger.info('[DEBUG-VERIFY] Success! Tokens match.');
             res.status(200).send(challenge);
         } else {
-            logger.warn('Webhook verification failed: Invalid token');
+            logger.warn('[DEBUG-VERIFY] Failed! Tokens do NOT match.');
             res.sendStatus(403);
         }
     }
