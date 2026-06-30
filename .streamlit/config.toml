@@ -1,1 +1,4 @@
-[server]\nenableCORS = false\nenableXsrfProtection = false\nheadless = true\n
+[server]
+enableCORS = false
+enableXsrfProtection = false
+headless = true
