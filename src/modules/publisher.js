@@ -40,7 +40,7 @@ export class FacebookPublisher {
     }
 
     static async sendDirectMessage(recipientId, text) {
-        const versions = ['v19.0', 'v20.0', 'v21.0'];
+        const versions = ['v25.0', 'v22.0', 'v21.0', 'v19.0'];
         let lastError = null;
 
         for (const version of versions) {
