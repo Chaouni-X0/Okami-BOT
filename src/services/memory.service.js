@@ -1,29 +1,26 @@
 import db from '../database/db.js';
-import { Manga } from '../database/mongo.js';
 import fs from 'fs';
 import path from 'path';
 import logger from '../utils/logger.js';
 
 export class MemoryService {
-    static async saveManga(mangaData) {
-        try {
-            const manga = await Manga.findOneAndUpdate(
-                { slug: mangaData.slug },
-                {
-                    title: mangaData.title,
-                    cover_url: mangaData.coverUrl,
-                    status: mangaData.status,
-                    source_site_key: mangaData.sourceSite,
-                    source_url: mangaData.sourceUrl,
-                    updated_at: new Date()
-                },
-                { upsert: true, new: true }
-            );
-            return { id: manga.slug }; // Use slug as the identifier for SQLite chapter table
-        } catch (error) {
-            logger.error(`Error saving manga to MongoDB: ${error.message}`);
-            throw error;
-        }
+    static saveManga(mangaData) {
+        const stmt = db.prepare(`
+            INSERT INTO manga (title, slug, cover_url, status, source_site_key, source_url)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(slug) DO UPDATE SET
+                status = excluded.status,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id
+        `);
+        return stmt.get(
+            mangaData.title,
+            mangaData.slug,
+            mangaData.coverUrl,
+            mangaData.status,
+            mangaData.sourceSite,
+            mangaData.sourceUrl
+        );
     }
 
     static markChapterAsPublished(mangaId, chapterNumber, fbPostId) {

@@ -1,4 +1,5 @@
 import { config } from '../config/config.js';
+import db from '../database/db.js';
 import scraperEngine from '../modules/scraper.js';
 import { QueueSystem } from '../modules/queue.js';
 import { FacebookPublisher } from '../modules/publisher.js';
@@ -9,156 +10,101 @@ export class DialogueService {
     static userStates = new Map();
 
     static async handleMessage(fbId, text) {
-        const cleanText = text.trim().toLowerCase();
         const state = this.userStates.get(fbId) || { step: 'START' };
+        const cleanText = text.trim();
 
-        logger.info(`[Dialogue] Message from ${fbId}: "${cleanText}" (State: ${state.step})`);
-
-        // --- Global Commands (Work anytime) ---
-        if (['ابدأ', 'start', 'مرحبا', 'hi', 'hello', 'menu', 'القائمة', 'help', 'مساعدة'].includes(cleanText)) {
-            return this.showMainMenu(fbId);
+        if (cleanText.toLowerCase() === 'مرحبا' || cleanText.toLowerCase() === 'start') {
+            this.userStates.set(fbId, { step: 'CHOOSING_MODE' });
+            return "🐺 أهلاً بك في أوكامي بوت!\n\nمن فضلك اختر الوضع:\n1. وضع المستخدم 👤\n2. وضع المطور 🛠️";
         }
 
-        // --- Direct Activation Command ---
-        if (cleanText.startsWith('تفعيل') || cleanText.startsWith('activate')) {
-            const password = cleanText.replace(/تفعيل|activate|[\[\]]/g, '').trim();
-            if (password === config.admin.password || password === config.admin.activationKey) {
-                this.userStates.set(fbId, { step: 'ADMIN_MODE' });
-                return "✅ تم التفعيل بنجاح! أهلاً بك أيها المطور.\n\n🔧 الأوامر المتاحة:\n• 'مواقع' - عرض مصادر المانجا\n• 'بحث [اسم]' - البحث عن مانجا\n• 'حالة' - عرض حالة النشر\n• 'مساعدة' - عرض هذه القائمة";
-            } else {
-                return "❌ رمز التفعيل أو كلمة السر غير صحيحة.";
-            }
-        }
-
-        // --- State Machine ---
         switch (state.step) {
-            case 'START':
-                // User hasn't activated yet - show helpful message
-                return this.showWelcomeMessage();
+            case 'CHOOSING_MODE':
+                if (cleanText === '1') {
+                    this.userStates.set(fbId, { step: 'USER_MODE' });
+                    return "👤 أنت الآن في وضع المستخدم. يمكنك طلب المانجا أو عرض ملفك الشخصي.";
+                } else if (cleanText === '2') {
+                    this.userStates.set(fbId, { step: 'AWAITING_PASSWORD' });
+                    return "🛠️ وضع المطور يتطلب كلمة سر. من فضلك أدخل كلمة السر:";
+                }
+                break;
+
+            case 'AWAITING_PASSWORD':
+                if (cleanText === config.admin.password) {
+                    this.userStates.set(fbId, { step: 'ADMIN_MODE' });
+                    return "✅ تم التحقق! أهلاً بك أيها المطور.\n\nأرسل كلمة 'مواقع' لعرض المواقع المدعومة.";
+                } else {
+                    return "❌ كلمة سر خاطئة. حاول مرة أخرى.";
+                }
 
             case 'ADMIN_MODE':
-                return this.handleAdminMode(fbId, cleanText, text.trim());
+                if (cleanText === 'مواقع') {
+                    const sites = config.sources.map(s => `${s.name} (${s.id})`).join('\n');
+                    this.userStates.set(fbId, { step: 'SELECTING_SITE' });
+                    return `🌐 المواقع المدعومة:\n${sites}\n\nمن فضلك اختر (ID) الموقع:`;
+                }
+                break;
 
             case 'SELECTING_SITE':
-                return this.handleSiteSelection(fbId, cleanText);
+                const source = config.sources.find(s => s.id === cleanText);
+                if (source) {
+                    this.userStates.set(fbId, { step: 'AWAITING_MANGA_NAME', sourceId: cleanText });
+                    return `✅ اخترت ${source.name}. الآن أرسل اسم المانهوا بالإنجليزية (الاسم الصحيح للبحث):`;
+                } else {
+                    return "❌ موقع غير مدعوم.";
+                }
 
             case 'AWAITING_MANGA_NAME':
-                return this.handleMangaName(fbId, text.trim(), state.sourceId);
+                const mangaName = cleanText;
+                const sourceId = state.sourceId;
+                this.userStates.set(fbId, { step: 'ADMIN_MODE' });
+                
+                this.startMangaExtraction(fbId, sourceId, mangaName);
+                return `🔍 جاري معالجة "${mangaName}"... سأقوم بحساب الوقت المتوقع وإرساله لك فوراً.`;
 
             default:
-                return this.showWelcomeMessage();
+                return "🐺 أرسل 'مرحبا' للبدء.";
         }
-    }
-
-    // --- Helper Methods ---
-
-    static showMainMenu(fbId) {
-        this.userStates.set(fbId, { step: 'START' });
-        return this.showWelcomeMessage();
-    }
-
-    static showWelcomeMessage() {
-        return `🐺 أهلاً بك في أوكامي بوت!
-
-أنا بوت خاص لنشر المانجا على فيسبوك.
-
-🔒 هذا البوت مخصص للمطور والمختبرين فقط.
-
-للبدء، أرسل:
-• تفعيل [كلمة السر] - لتفعيل وضع المطور
-• مساعدة - لعرض هذه الرسالة`;
-    }
-
-    static handleAdminMode(fbId, cleanText, originalText) {
-        // Site listing
-        if (cleanText === 'مواقع' || cleanText === 'sites') {
-            const sites = config.sources.map(s => `🔹 ${s.name} (ID: ${s.id})`).join('\n');
-            this.userStates.set(fbId, { step: 'SELECTING_SITE' });
-            return `🌐 المواقع المدعومة حالياً:\n\n${sites}\n\n✏️ اكتب ID الموقع للاختيار:`;
-        }
-
-        // Search
-        if (cleanText.startsWith('بحث ') || cleanText.startsWith('search ')) {
-            const query = cleanText.replace(/بحث |search /g, '');
-            return `🔍 البحث عن "${query}" قيد التطوير. استخدم 'مواقع' ثم اختر المانجا مباشرة.`;
-        }
-
-        // Status check
-        if (cleanText === 'حالة' || cleanText === 'status') {
-            return `📊 حالة البوت:\n• ✅ البوت يعمل\n• استخدم 'مواقع' لبدء نشر مانجا جديدة`;
-        }
-
-        // Help
-        if (cleanText === 'مساعدة' || cleanText === 'help') {
-            return `🔧 أوامر وضع المطور:\n\n• مواقع - عرض مصادر المانجا\n• حالة - فحص حالة البوت\n• مساعدة - عرض هذه القائمة\n\n💡 لنشر مانجا:\n1. أرسل 'مواقع'\n2. اختر الموقع (ID)\n3. أرسل اسم المانجا`;
-        }
-
-        // Unknown command in admin mode
-        return `❓ أمر غير معروف: "${originalText}"\n\n🔧 الأوامر المتاحة:\n• مواقع - عرض المصادر\n• حالة - حالة البوت\n• مساعدة - عرض المساعدة`;
-    }
-
-    static handleSiteSelection(fbId, cleanText) {
-        const source = config.sources.find(s => s.id === cleanText);
-        if (source) {
-            this.userStates.set(fbId, { step: 'AWAITING_MANGA_NAME', sourceId: cleanText });
-            return `✅ تم اختيار: ${source.name}\n\n✏️ أرسل اسم المانجا كما هو في الموقع:`;
-        } else {
-            return `❌ ID غير صحيح. أرسل 'مواقع' للعرض مرة أخرى.`;
-        }
-    }
-
-    static handleMangaName(fbId, mangaName, sourceId) {
-        this.userStates.set(fbId, { step: 'ADMIN_MODE' });
-        
-        // Fire and forget extraction
-        this.startMangaExtraction(fbId, sourceId, mangaName);
-        return `⏳ جاري فحص "${mangaName}"...\nسأرسل التقرير فور الانتهاء.`;
     }
 
     static async startMangaExtraction(fbId, sourceId, mangaName) {
         try {
-            logger.info(`[Extraction] Starting for ${mangaName} from ${sourceId}`);
             const results = await scraperEngine.search(sourceId, mangaName);
-            
-            if (!results || results.length === 0) {
-                await FacebookPublisher.sendDirectMessage(fbId, `❌ لم أجد "${mangaName}" في هذا الموقع.`);
+            if (!results.length) {
+                await FacebookPublisher.sendDirectMessage(fbId, `❌ لم أجد مانهوا باسم "${mangaName}" في هذا الموقع.`);
                 return;
             }
 
             const manga = results[0];
             const details = await scraperEngine.getMangaDetails(sourceId, manga.url);
             
-            if (!details || !details.chapters || details.chapters.length === 0) {
-                await FacebookPublisher.sendDirectMessage(fbId, `⚠️ تم العثور على المانجا ولكن لا توجد فصول.`);
-                return;
-            }
-
-            const mangaData = {
+            const mangaId = MemoryService.saveManga({
                 title: details.title,
-                slug: details.slug || mangaName.toLowerCase().replace(/ /g, '-'),
+                slug: mangaName.toLowerCase().replace(/ /g, '-'),
                 coverUrl: details.coverUrl,
                 status: details.status,
                 sourceSite: sourceId,
                 sourceUrl: manga.url
-            };
+            }).id;
 
-            const savedManga = await MemoryService.saveManga(mangaData);
-            
+            // حساب الوقت المتوقع
             const chapterCount = details.chapters.length;
             const totalMinutes = chapterCount * 5;
             const hours = Math.floor(totalMinutes / 60);
             const minutes = totalMinutes % 60;
-            const timeText = hours > 0 ? `${hours}س و${minutes}د` : `${minutes}د`;
+            const timeText = hours > 0 ? `${hours} ساعة و ${minutes} دقيقة` : `${minutes} دقيقة`;
 
             await FacebookPublisher.sendDirectMessage(fbId, 
-                `✅ ${details.title}\n` +
-                `📚 ${chapterCount} فصل | ⏳ ${timeText}\n` +
-                `🚀 بدأت عملية النشر!`
+                `✅ تم العثور على "${details.title}".\n` +
+                `🔢 عدد الفصول: ${chapterCount}\n` +
+                `⏳ الوقت المتوقع للنشر: ${timeText} (بمعدل فصل كل 5 دقائق).\n\n` +
+                `🚀 بدأ النشر الآن...`
             );
 
+            // إضافة الفصول للطابور
             for (const ch of details.chapters) {
                 await QueueSystem.addToQueue({
-                    mangaId: savedManga.slug,
+                    mangaId,
                     number: ch.number,
                     chapterUrl: ch.url,
                     sourceKey: sourceId,
@@ -167,8 +113,8 @@ export class DialogueService {
             }
 
         } catch (error) {
-            logger.error(`[Extraction Error]: ${error.message}`);
-            await FacebookPublisher.sendDirectMessage(fbId, `❌ خطأ: ${error.message}`);
+            logger.error(`Extraction Error: ${error.message}`);
+            await FacebookPublisher.sendDirectMessage(fbId, `❌ حدث خطأ أثناء معالجة المانهوا: ${error.message}`);
         }
     }
 }

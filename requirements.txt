@@ -1,0 +1,28 @@
+# Core Dependencies
+express==5.2.1
+better-sqlite3==12.11.1
+mongoose==9.7.3
+dotenv==17.4.2
+
+# Web Scraping & Data Processing
+axios==1.18.1
+cheerio==1.2.0
+sharp==0.35.2
+canvas==2.11.2
+
+# Utilities
+node-cron==4.5.0
+winston==3.19.0
+form-data==4.0.6
+
+# Dashboard & UI
+streamlit==1.28.0
+pandas==2.0.0
+plotly==5.17.0
+
+# Arabic Support
+arabic-reshaper==1.1.0
+bidi-js==1.0.3
+
+# Development
+nodemon==3.1.14

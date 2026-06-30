@@ -2,23 +2,19 @@ import dotenv from 'dotenv';
 import path from 'path';
 dotenv.config();
 
-// Persistent Storage path (Important for Hugging Face /data)
+// تحديد مسار التخزين الدائم (Persistent Storage)
+// في Render، سنقوم بربط هذا المسار بـ Persistent Disk
 const DATA_DIR = process.env.DATA_DIR || './data';
 
 export const config = {
-    port: process.env.PORT || 7860,
     facebook: {
-        accessToken: process.env.FB_ACCESS_TOKEN,
-        pageId: process.env.FB_PAGE_ID,
+        accessToken: process.env.FB_ACCESS_TOKEN || 'EAAVfEISz5KkBRZBWnJrC3EZCbuIISxhIZAx6hsX2wzaZC7U2ob94pdufWJeeogfkKsbnzE5w5ecBWc9YuqFihNEDNNXHTMxZBNyNgmKvRmxZBDyMMWVZBfIS1RqA1ejkKYleuZCzY4FZAZBwTIoWLuDeEbnNEjmyaUJZC98kvKXW4r8ITP8uAWEUGMafuhoGeqZA8ZCdBwoFp9qoq',
+        pageId: process.env.FB_PAGE_ID || '1211757672016850',
         appSecret: process.env.FB_APP_SECRET,
-        verifyToken: process.env.FACEBOOK_VERIFY_TOKEN
     },
     admin: {
-        activationKey: process.env.ADMIN_ACTIVATION_KEY,
-        password: process.env.ADMIN_PASSWORD
-    },
-    mongodb: {
-        uri: process.env.MONGODB_URI
+        activationKey: "chaouni_x_2013-2",
+        password: process.env.ADMIN_PASSWORD || 'OKAMI-BOT__START'
     },
     database: {
         path: path.join(DATA_DIR, 'okami.db'),
@@ -30,14 +26,7 @@ export const config = {
     sources: [
         { id: 'mangaarab', name: 'Manga Arab', url: 'https://mangaarab.com' },
         { id: 'mangalek', name: 'Manga Lek', url: 'https://mangalek.com' },
-        { id: 'mangaswat', name: 'Manga Swat', url: 'https://swatmanga.me' },
-        { id: 'gmanga', name: 'G-Manga', url: 'https://gmanga.me' },
-        { id: 'azoramanga', name: 'Azora Manga', url: 'https://azoramanga.com' },
-        { id: 'mangatime', name: 'Manga Time', url: 'https://mangatime.us' },
-        { id: 'mangaonlineteam', name: 'Manga Online Team', url: 'https://mangaonlineteam.com' },
-        { id: 'teamx', name: 'Team X', url: 'https://team1x1.com' },
-        { id: 'mangaspark', name: 'Manga Spark', url: 'https://mangaspark.com' },
-        { id: 'mangalord', name: 'Manga Lord', url: 'https://mangalord.com' }
+        { id: 'mangaswat', name: 'Manga Swat', url: 'https://swatmanga.me' }
     ],
     settings: {
         maxImageHeight: 1500,

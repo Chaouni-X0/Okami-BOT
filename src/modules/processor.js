@@ -3,7 +3,6 @@ import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 import { config } from '../config/config.js';
-import logger from '../utils/logger.js';
 
 export class ChapterProcessor {
     constructor() {
@@ -45,7 +44,7 @@ export class ChapterProcessor {
 
             return parts;
         } catch (error) {
-            logger.error(`[Processor] Slicing Error: ${error.message}`);
+            console.error(`Error slicing image: ${error.message}`);
             return [];
         }
     }
@@ -63,37 +62,28 @@ export class ChapterProcessor {
                     const response = await axios({
                         url: imgUrl,
                         responseType: 'arraybuffer',
-                        headers: { 'User-Agent': config.scraping.userAgent },
-                        timeout: 20000,
-                        validateStatus: (status) => status === 200
+                        headers: { 'User-Agent': config.scraping.userAgent }
                     });
 
                     const parts = await this.sliceImage(response.data, chapterDir, i);
-                    if (parts.length > 0) processedImages.push(...parts);
+                    processedImages.push(...parts);
 
                 } catch (error) {
-                    logger.warn(`[Processor] Image ${i} failed: ${error.message}`);
+                    console.error(`Failed to process image ${i}:`, error.message);
                 }
             }
-            
-            if (processedImages.length === 0) throw new Error("No images were successfully processed for this chapter.");
-            
             return { chapterDir, images: processedImages };
         } catch (error) {
-            logger.error(`[Processor] Critical Chapter Error: ${error.message}`);
+            // Aggressive fail-safe cleanup
             this.cleanup(chapterDir);
             throw error;
         }
     }
 
     cleanup(dirPath) {
-        try {
-            if (fs.existsSync(dirPath)) {
-                fs.rmSync(dirPath, { recursive: true, force: true });
-                logger.info(`[Cleanup] Deleted directory: ${dirPath}`);
-            }
-        } catch (err) {
-            logger.error(`[Cleanup Error] ${err.message}`);
+        if (fs.existsSync(dirPath)) {
+            fs.rmSync(dirPath, { recursive: true, force: true });
+            console.log(`Cleaned up directory: ${dirPath}`);
         }
     }
 }

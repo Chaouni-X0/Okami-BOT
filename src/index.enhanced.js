@@ -1,29 +1,36 @@
 import express from 'express';
-import { config } from './config/config.js';
+import { config, validateConfig } from './config/config.enhanced.js';
 import db from './database/db.js';
-import { DialogueService } from './services/dialogue.service.js';
+import mongoose from './database/mongo.js';
+import DialogueServiceEnhanced from './services/dialogue.service.enhanced.js';
 import { FacebookPublisher } from './modules/publisher.js';
 import { QueueSystem } from './modules/queue.js';
 import logger from './utils/logger.js';
 import fs from 'fs';
 import path from 'path';
 
-// --- Global Error Handling & Crash Prevention ---
+/**
+ * 🐺 Okami Bot - Main Entry Point (Enhanced)
+ * النسخة المحسّنة مع دعم واجهة التحكم وقاعدة البيانات المزدوجة
+ */
+
+// 1. التحقق من الإعدادات
+validateConfig();
+
+// 2. معالجة الأخطاء العالمية ومنع الانهيار
 process.on('uncaughtException', (error) => {
     logger.error(`CRITICAL: Uncaught Exception: ${error.message}`);
     logger.error(error.stack);
-    // Keep the process alive for Hugging Face container stability
 });
 
 process.on('unhandledRejection', (reason, promise) => {
     logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
-    // Keep the process alive
 });
 
 const app = express();
 app.use(express.json());
 
-// Webhook لفيسبوك
+// 3. Webhook فيسبوك (التحقق)
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -31,33 +38,39 @@ app.get('/webhook', (req, res) => {
 
     if (mode && token) {
         if (mode === 'subscribe' && token === config.facebook.verifyToken) {
+            logger.info('Webhook verified successfully!');
             res.status(200).send(challenge);
         } else {
+            logger.warn('Webhook verification failed: Invalid token');
             res.sendStatus(403);
         }
     }
 });
 
-// --- Optimized Facebook Webhook Handling (Asynchronous) ---
+// 4. معالجة رسائل Webhook (بشكل غير متزامن)
 app.post('/webhook', (req, res) => {
     const body = req.body;
 
     if (body.object === 'page') {
-        // 1. Respond immediately to Facebook within 1 second
+        // الرد الفوري على فيسبوك
         res.status(200).send('EVENT_RECEIVED');
 
-        // 2. Process heavy operations in the background
+        // المعالجة في الخلفية
         (async () => {
             try {
                 for (const entry of body.entry) {
                     if (!entry.messaging) continue;
-                    const webhook_event = entry.messaging[0];
-                    const sender_id = webhook_event.sender.id;
+                    
+                    for (const webhook_event of entry.messaging) {
+                        const sender_id = webhook_event.sender.id;
 
-                    if (webhook_event.message && webhook_event.message.text) {
-                        const responseText = await DialogueService.handleMessage(sender_id, webhook_event.message.text);
-                        if (responseText) {
-                            await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                        // معالجة الرسائل النصية
+                        if (webhook_event.message && webhook_event.message.text) {
+                            const responseText = await DialogueServiceEnhanced.handleMessage(sender_id, webhook_event.message.text);
+                            
+                            if (responseText) {
+                                await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                            }
                         }
                     }
                 }
@@ -70,16 +83,22 @@ app.post('/webhook', (req, res) => {
     }
 });
 
+// 5. مسارات الحالة والمعلومات
 app.get('/status', (req, res) => {
     res.json({ 
         status: 'online', 
-        project: '🐺 Okami Bot (Hugging Face Optimized)', 
-        version: '5.0.0' 
+        project: '🐺 Okami Bot (Enhanced Edition)', 
+        version: config.app.version,
+        environment: config.app.environment,
+        database: {
+            sqlite: 'connected',
+            mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+        }
     });
 });
 
-// --- Resource Management: Cleanup Task ---
-const TEMP_DIR = path.resolve('./src/temp');
+// 6. إدارة الموارد (مهمة التنظيف)
+const TEMP_DIR = config.storage.tempDir;
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 setInterval(() => {
@@ -89,9 +108,9 @@ setInterval(() => {
         for (const file of files) {
             const filePath = path.join(TEMP_DIR, file);
             const stats = fs.statSync(filePath);
-            const ageMinutes = (now - stats.mtimeMs) / (1000 * 60);
+            const ageMs = now - stats.mtimeMs;
             
-            if (ageMinutes > 10) {
+            if (ageMs > config.storage.maxTempAge) {
                 if (stats.isDirectory()) {
                     fs.rmSync(filePath, { recursive: true, force: true });
                 } else {
@@ -103,9 +122,9 @@ setInterval(() => {
     } catch (error) {
         logger.error(`Cleanup Engine Error: ${error.message}`);
     }
-}, 60 * 60 * 1000); // Run hourly check
+}, config.storage.cleanupInterval);
 
-// --- Resilient Server Entry-Point Binding ---
+// 7. تشغيل الخادم
 const startServer = (port) => {
     const server = app.listen(port, async () => {
         logger.info(`Okami Bot API running on port ${port}`);
@@ -120,7 +139,7 @@ const startServer = (port) => {
         if (err.code === 'EADDRINUSE') {
             logger.warn(`Port ${port} is already in use. Trying a random port...`);
             setTimeout(() => {
-                startServer(0); // Bind to random available port
+                startServer(0);
             }, 1000);
         } else {
             logger.error(`Server Error: ${err.message}`);
@@ -128,5 +147,5 @@ const startServer = (port) => {
     });
 };
 
-const PORT = process.env.PORT || 7860;
+const PORT = config.app.port;
 startServer(PORT);
