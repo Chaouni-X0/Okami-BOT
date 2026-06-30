@@ -67,21 +67,28 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
     const body = req.body;
     if (body.object === 'page') {
+        // رد فوري لفيسبوك لتجنب إعادة إرسال نفس الرسالة (Retry)
+        res.status(200).send('EVENT_RECEIVED');
+
+        // معالجة الرسائل في الخلفية لضمان السرعة
         body.entry.forEach(async (entry) => {
             if (entry.messaging) {
                 for (const event of entry.messaging) {
                     const senderId = event.sender.id;
                     if (event.message && event.message.text) {
                         logger.info(`[MSG] Received from ${senderId}: "${event.message.text}"`);
-                        const responseText = await DialogueServiceEnhanced.handleMessage(senderId, event.message.text);
-                        if (responseText) {
-                            await FacebookPublisher.sendDirectMessage(senderId, responseText);
-                        }
+                        // تنفيذ المعالجة والإرسال دون انتظار الاستجابة الكاملة للـ Webhook
+                        DialogueServiceEnhanced.handleMessage(senderId, event.message.text)
+                            .then(responseText => {
+                                if (responseText) {
+                                    FacebookPublisher.sendDirectMessage(senderId, responseText);
+                                }
+                            })
+                            .catch(err => logger.error(`[MSG] Error handling message: ${err.message}`));
                     }
                 }
             }
         });
-        res.status(200).send('EVENT_RECEIVED');
     } else {
         res.sendStatus(404);
     }

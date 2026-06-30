@@ -45,46 +45,31 @@ export class NotificationService {
 
     static async sendFacebookMessage(recipientId, text) {
         const { exec } = await import('child_process');
-        return new Promise((resolve, reject) => {
-            const token = config.facebook.accessToken;
-            if (!token) {
-                logger.error("[SEND] Error: FACEBOOK_ACCESS_TOKEN is missing!");
-                return resolve(false);
-            }
+        
+        const token = config.facebook.accessToken;
+        if (!token) {
+            logger.error("[SEND] Error: FACEBOOK_ACCESS_TOKEN is missing!");
+            return false;
+        }
 
-            const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${token}`;
-            const payload = JSON.stringify({
-                recipient: { id: recipientId },
-                message: { text: text }
-            });
-
-            // Escape single quotes for bash command
-            const safePayload = payload.replace(/'/g, "'\\''");
-
-            // أداة curl مع إجبار IPv4 وتحديد وقت أقصى (10 ثوانٍ)
-            const command = `curl -4 -s -m 10 -X POST -H "Content-Type: application/json" -d '${safePayload}' "${url}"`;
-
-            logger.info(`[SEND] Sending notification to ${recipientId} via OS Curl...`);
-            exec(command, (error, stdout, stderr) => {
-                if (error) {
-                    logger.error(`[SEND] OS/Curl Error: ${error.message}`);
-                    return resolve(false);
-                }
-                try {
-                    const data = JSON.parse(stdout);
-                    if (data.error) {
-                        logger.error(`[SEND] Facebook API Error: ${data.error.message}`);
-                        resolve(false);
-                    } else {
-                        logger.info(`[SEND] Success to ${recipientId}`);
-                        resolve(true);
-                    }
-                } catch (parseError) {
-                    logger.error(`[SEND] JSON Parse Error: ${stdout}`);
-                    resolve(false);
-                }
-            });
+        const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${token}`;
+        const payload = JSON.stringify({
+            recipient: { id: recipientId },
+            message: { text: text }
         });
+
+        const safePayload = payload.replace(/'/g, "'\\''");
+
+        // تحسين Curl: إرسال في الخلفية لضمان عدم تعطيل طابور التنبيهات
+        const command = `curl -4 -s --connect-timeout 3 -m 5 --tcp-fastopen -X POST -H "Content-Type: application/json" -d '${safePayload}' "${url}" &`;
+
+        logger.info(`[SEND] Fast-dispatching notification to ${recipientId} via OS Curl...`);
+        
+        exec(command, (error) => {
+            if (error) logger.error(`[SEND] Background OS/Curl Error: ${error.message}`);
+        });
+
+        return true;
     }
 
     static async broadcast(message) {
