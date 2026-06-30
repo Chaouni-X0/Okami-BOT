@@ -1,4 +1,5 @@
 import express from 'express';
+import axios from 'axios';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { config, validateConfig } from './config/config.enhanced.js';
 import db from './database/db.js';
