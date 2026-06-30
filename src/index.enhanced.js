@@ -53,8 +53,10 @@ app.use(express.json());
 
 // --- سجل شامل لجميع الطلبات الواردة للتشخيص ---
 app.use((req, res, next) => {
-    if (req.path === '/webhook') {
-        logger.info(`[INCOMING] Webhook Request: ${req.method} ${req.path}`);
+    // طباعة كل الطلبات التي تصل للمسارات المتعلقة بالـ Webhook للتشخيص
+    if (req.path.includes('webhook')) {
+        logger.info(`[DEBUG-ROUTER] Request Received: ${req.method} ${req.url}`);
+        logger.info(`[DEBUG-ROUTER] Headers: ${JSON.stringify(req.headers)}`);
     }
     next();
 });
