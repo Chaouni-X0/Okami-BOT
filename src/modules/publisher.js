@@ -1,12 +1,15 @@
 import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
+import https from 'https';
 import { config } from '../config/config.enhanced.js';
 import logger from '../utils/logger.js';
 
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+
 export class FacebookPublisher {
     static baseUrl = `https://graph.facebook.com/v19.0/${config.facebook.pageId}`;
-    static accessToken = config.facebook.accessToken;
+    static accessToken = config.facebook.accessToken.trim();
 
     static async publishChapter(imagePaths, message) {
         try {
@@ -38,9 +41,13 @@ export class FacebookPublisher {
 
     static async sendDirectMessage(recipientId, text) {
         try {
-            await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${this.accessToken}`, {
+            await axios.post(`https://graph.facebook.com/v19.0/me/messages`, {
                 recipient: { id: recipientId },
                 message: { text: text }
+            }, {
+                params: { access_token: this.accessToken },
+                httpsAgent: httpsAgent,
+                timeout: 30000
             });
             return true;
         } catch (error) {
