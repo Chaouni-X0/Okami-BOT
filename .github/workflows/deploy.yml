@@ -1,1 +1,104 @@
 
+name: Deploy to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub Repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true # Enable LFS for checkout
+
+      - name: Deploy to Hugging Face Spaces
+        env:
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACES: ${{ secrets.HF_SPACES }}
+        run: |
+          set -euo pipefail
+
+          # Install git-lfs
+          sudo apt-get update
+          sudo apt-get install -y git-lfs
+          git lfs install
+
+          # Parse comma-separated HF_SPACES into an array
+          IFS=',' read -ra SPACES_ARRAY <<< "$HF_SPACES"
+
+          echo "Starting deployment to Hugging Face Spaces..."
+
+          for SPACE_NAME in "${SPACES_ARRAY[@]}"; do
+            echo "\n--- Deploying to Space: $SPACE_NAME ---"
+            SPACE_DIR="hf-space-$SPACE_NAME"
+
+            # 1. Clone the Hugging Face Space
+            echo "Attempting to clone Hugging Face Space: $SPACE_NAME"
+            if ! git clone https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/$SPACE_NAME "$SPACE_DIR"; then
+              echo "Error: Failed to clone Hugging Face Space '$SPACE_NAME'. Skipping this space." >&2
+              continue # Skip to the next space
+            fi
+            echo "Successfully cloned $SPACE_NAME."
+
+            # 2. Validate project before deployment
+            # Check if "app.py" OR "main.py" exists in the current GitHub repository checkout
+            if [ ! -f "app.py" ] && [ ! -f "main.py" ]; then
+              echo "Error: Neither app.py nor main.py found in the GitHub repository. Deployment aborted for '$SPACE_NAME'." >&2
+              rm -rf "$SPACE_DIR" # Clean up cloned space
+              continue # Skip to the next space
+            fi
+            echo "Project validation passed for $SPACE_NAME."
+
+            # 3. Sync files using rsync
+            echo "Syncing files to $SPACE_NAME..."
+            # Exclude .git and the temporary hf-space directories from the source (current repo)
+            # The destination is the cloned HF space directory
+            if ! rsync -av --delete --exclude '.git' --exclude 'hf-space*' . "$SPACE_DIR/"; then
+              echo "Error: rsync failed for '$SPACE_NAME'. Skipping this space." >&2
+              rm -rf "$SPACE_DIR" # Clean up cloned space
+              continue # Skip to the next space
+            fi
+            echo "Files synced to $SPACE_NAME."
+
+            # 4. Configure git for the Hugging Face Space repository
+            cd "$SPACE_DIR"
+            git config user.email "actions@github.com"
+            git config user.name "github-actions"
+
+            # 5. Detect changes, commit, and push
+            echo "Checking for changes in $SPACE_NAME..."
+            git add .
+            if git diff-index --quiet HEAD; then
+              echo "No changes detected in $SPACE_NAME. Skipping commit and push."
+            else
+              echo "Changes detected. Committing and pushing to $SPACE_NAME..."
+              if ! git commit -m "ðŸš€ Auto-sync from GitHub"; then
+                echo "Warning: Failed to commit changes for '$SPACE_NAME'. Attempting to push anyway." >&2
+              fi
+
+              # Retry push once if it fails
+              for i in 1 2; do
+                if git push; then
+                  echo "Successfully pushed changes to $SPACE_NAME."
+                  break
+                else
+                  echo "Warning: Push failed for '$SPACE_NAME' (attempt $i). Retrying..." >&2
+                  sleep 5 # Wait a bit before retrying
+                fi
+              done
+              if [ $i -eq 2 ] && ! git push; then
+                echo "Error: Push failed after retry for '$SPACE_NAME'." >&2
+              fi
+            fi
+            cd .. # Go back to the root of the GitHub repository
+            rm -rf "$SPACE_DIR" # Clean up cloned space directory
+            echo "--- Finished deploying to Space: $SPACE_NAME ---"
+          done
+
+          echo "All deployments attempted."
