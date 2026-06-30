@@ -28,6 +28,10 @@ process.on('unhandledRejection', (reason, promise) => {
     logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+// زيادة حد المستمعين لتجنب تحذيرات Memory Leak الناتجة عن اتصالات الـ Proxy المكثفة لـ Streamlit
+import { EventEmitter } from 'events';
+EventEmitter.defaultMaxListeners = 100;
+
 const app = express();
 
 // --- Proxy لإعادة توجيه واجهة التحكم إلى Streamlit (المنفذ 8501) ---
