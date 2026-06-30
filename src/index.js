@@ -48,7 +48,6 @@ app.get('/', async (req, res) => {
     try {
         const userCount = await User.countDocuments().catch(() => 0);
         const mangaCount = await Manga.countDocuments().catch(() => 0);
-        const topUsers = await User.find().sort({ points: -1 }).limit(5).catch(() => []);
         
         const html = `
         <!DOCTYPE html>
@@ -84,10 +83,6 @@ app.get('/', async (req, res) => {
                     <div class="relative w-96">
                         <i class="fas fa-terminal absolute right-3 top-3 text-gray-500"></i>
                         <input id="commandInput" type="text" placeholder="اكتب / للأوامر السريعة..." class="w-full bg-black border border-zinc-700 rounded-lg py-2 pr-10 pl-4 command-input text-sm">
-                        <div id="commandList" class="hidden absolute top-12 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50">
-                            <div class="p-2 hover:bg-purple-900/20 cursor-pointer text-sm" onclick="setCmd('/search ')"><i class="fas fa-search ml-2"></i> /search [اسم المانهوا]</div>
-                            <div class="p-2 hover:bg-purple-900/20 cursor-pointer text-sm" onclick="setCmd('/stats')"><i class="fas fa-info-circle ml-2"></i> /stats - عرض الإحصائيات</div>
-                        </div>
                     </div>
                     <div class="flex items-center space-x-4">
                         <span class="flex items-center text-xs text-green-500"><i class="fas fa-circle mr-2 text-[8px]"></i> متصل</span>
@@ -156,76 +151,59 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
     const body = req.body;
     
-    if (body.object !== 'page') {
-        return res.sendStatus(404);
-    }
+    // [DIAGNOSTIC] Log incoming webhook structure
+    logger.info(`[Webhook] Incoming request: ${JSON.stringify(body).substring(0, 500)}...`);
 
-    // Respond immediately to Facebook (required within 20 seconds)
-    res.status(200).send('EVENT_RECEIVED');
+    if (body.object === 'page') {
+        // Immediate response to Facebook to prevent timeouts
+        res.status(200).send('EVENT_RECEIVED');
 
-    // Process events asynchronously
-    (async () => {
-        for (const entry of body.entry) {
-            try {
-                if (!entry.messaging || entry.messaging.length === 0) continue;
-                
-                const webhook_event = entry.messaging[0];
-                
-                // Skip non-message events (delivery receipts, read receipts, etc.)
-                if (!webhook_event.message) continue;
-                
-                // Skip echo messages (messages sent by the bot itself)
-                if (webhook_event.message.is_echo) {
-                    logger.debug('[Webhook] Skipping echo message');
-                    continue;
-                }
-                
-                // Skip messages without text
-                if (!webhook_event.message.text) {
-                    logger.debug('[Webhook] Skipping message without text');
-                    continue;
-                }
-                
-                const sender_id = webhook_event.sender?.id;
-                const recipient_id = webhook_event.recipient?.id;
-                
-                // Validate sender
-                if (!sender_id) {
-                    logger.warn('[Webhook] Message without sender ID');
-                    continue;
-                }
-                
-                // Skip messages from the page itself (prevents loops)
-                if (sender_id === config.facebook.pageId) {
-                    logger.debug('[Webhook] Skipping message from page itself');
-                    continue;
-                }
-                
-                const messageText = webhook_event.message.text;
-                
-                logger.info(`[Webhook] Processing message from ${sender_id}: "${messageText.substring(0, 50)}"`);
-                
-                // Get response from dialogue service
-                const responseText = await DialogueService.handleMessage(sender_id, messageText);
-                
-                if (responseText) {
-                    // Send response back to user
-                    const sent = await FacebookPublisher.sendDirectMessage(sender_id, responseText);
-                    if (sent) {
-                        logger.info(`[Webhook] Response sent to ${sender_id}`);
-                    } else {
-                        logger.error(`[Webhook] Failed to send response to ${sender_id}`);
+        (async () => {
+            for (const entry of body.entry) {
+                try {
+                    if (!entry.messaging || entry.messaging.length === 0) {
+                        logger.warn(`[Webhook] Entry has no messaging data: ${entry.id}`);
+                        continue;
                     }
-                } else {
-                    logger.warn(`[Webhook] No response generated for message from ${sender_id}`);
+
+                    const webhook_event = entry.messaging[0];
+                    const sender_id = webhook_event.sender?.id;
+
+                    // Skip echo messages (messages sent by the bot itself)
+                    if (webhook_event.message?.is_echo) {
+                        logger.debug('[Webhook] Skipping echo message');
+                        continue;
+                    }
+
+                    // [DIAGNOSTIC] Log sender info
+                    logger.info(`[Webhook] Message from sender: ${sender_id}`);
+
+                    if (webhook_event.message && webhook_event.message.text) {
+                        const incomingText = webhook_event.message.text;
+                        logger.info(`[Webhook] Text received: "${incomingText}"`);
+
+                        const responseText = await DialogueService.handleMessage(sender_id, incomingText);
+                        
+                        if (responseText) {
+                            logger.info(`[Webhook] Sending response to ${sender_id}: "${responseText.substring(0, 50)}..."`);
+                            const success = await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                            if (!success) {
+                                logger.error(`[Webhook] Failed to send response to ${sender_id}. Check FB_ACCESS_TOKEN and Page permissions.`);
+                            }
+                        }
+                    } else if (webhook_event.postback) {
+                        logger.info(`[Webhook] Postback received: ${JSON.stringify(webhook_event.postback)}`);
+                    }
+                } catch (error) {
+                    logger.error(`[Webhook Critical Error]: ${error.message}`);
+                    logger.error(error.stack);
                 }
-                
-            } catch (error) {
-                logger.error(`[Webhook Entry Error]: ${error.message}`);
-                logger.error(error.stack);
             }
-        }
-    })();
+        })();
+    } else {
+        logger.warn(`[Webhook] Received non-page object: ${body.object}`);
+        res.sendStatus(404);
+    }
 });
 
 // --- Health Check ---
