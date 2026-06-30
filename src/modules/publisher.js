@@ -63,34 +63,47 @@ export class FacebookPublisher {
     }
 
     static async sendDirectMessage(recipientId, text) {
-        try {
-            logger.info(`[SEND] Sending to ${recipientId} via v21.0...`);
-            const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${this.accessToken}`;
-            
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'OkamiBot/5.0'
-                },
-                body: JSON.stringify({
-                    recipient: { id: recipientId },
-                    message: { text: text }
-                }),
-                signal: AbortSignal.timeout(15000)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.text();
-                throw new Error(`Facebook API Error: ${response.status} - ${errorData}`);
+        const { exec } = await import('child_process');
+        return new Promise((resolve) => {
+            const token = this.accessToken;
+            if (!token) {
+                logger.error("[SEND] Error: FACEBOOK_ACCESS_TOKEN is missing!");
+                return resolve(false);
             }
 
-            logger.info(`[SEND] Success! Message sent to ${recipientId}`);
-            return true;
-        } catch (error) {
-            logger.error(`[SEND] Failed: ${error.message}`);
-            return false;
-        }
+            const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${token}`;
+            const payload = JSON.stringify({
+                recipient: { id: recipientId },
+                message: { text: text }
+            });
+
+            // Escape single quotes for bash command
+            const safePayload = payload.replace(/'/g, "'\\''");
+
+            // أداة curl مع إجبار IPv4 وتحديد وقت أقصى (10 ثوانٍ)
+            const command = `curl -4 -s -m 10 -X POST -H "Content-Type: application/json" -d '${safePayload}' "${url}"`;
+
+            logger.info(`[SEND] Sending to ${recipientId} via OS Curl...`);
+            exec(command, (error, stdout, stderr) => {
+                if (error) {
+                    logger.error(`[SEND] OS/Curl Error: ${error.message}`);
+                    return resolve(false);
+                }
+                try {
+                    const data = JSON.parse(stdout);
+                    if (data.error) {
+                        logger.error(`[SEND] Facebook API Error: ${data.error.message}`);
+                        resolve(false);
+                    } else {
+                        logger.info(`[SEND] Success to ${recipientId}`);
+                        resolve(true);
+                    }
+                } catch (parseError) {
+                    logger.error(`[SEND] JSON Parse Error: ${stdout}`);
+                    resolve(false);
+                }
+            });
+        });
     }
 
     /**

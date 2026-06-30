@@ -148,7 +148,8 @@ const startServer = (port) => {
     const server = app.listen(port, async () => {
         logger.info(`Okami Bot API running on port ${port}`);
         
-        // --- اختبار ذاتي للـ Facebook Token (نسخة Native Fetch) ---
+        // --- اختبار ذاتي للـ Facebook Token (تم إيقافه لتجنب مشاكل الشبكة في Hugging Face) ---
+        /*
         (async () => {
             try {
                 const cleanToken = config.facebook.accessToken.trim();
@@ -169,6 +170,7 @@ const startServer = (port) => {
                 logger.error(`[CHECK] Failed: ${e.message}`);
             }
         })();
+        */
 
         try {
             await QueueSystem.resumeQueue();
