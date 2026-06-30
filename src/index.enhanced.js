@@ -1,4 +1,5 @@
 import express from 'express';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import { config, validateConfig } from './config/config.enhanced.js';
 import db from './database/db.js';
 import mongoose from './database/mongo.js';
@@ -28,6 +29,22 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const app = express();
+
+// --- Proxy لإعادة توجيه واجهة التحكم إلى Streamlit (المنفذ 8501) ---
+// يتم توجيه جميع الطلبات ما عدا /webhook و /status إلى Streamlit
+app.use((req, res, next) => {
+    if (req.path === '/webhook' || req.path === '/status') {
+        return next();
+    }
+    // تمرير الطلبات الأخرى إلى Streamlit
+    createProxyMiddleware({
+        target: 'http://localhost:8501',
+        changeOrigin: true,
+        ws: true, // دعم WebSockets لـ Streamlit
+        logLevel: 'silent'
+    })(req, res, next);
+});
+
 app.use(express.json());
 
 // 3. Webhook فيسبوك (التحقق)
