@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # تثبيت مكتبات بايثون للوحة التحكم
@@ -49,5 +50,3 @@ RUN echo '#!/bin/bash\nnpm start & streamlit run dashboard.py --server.port 8501
 # تشغيل البوت على المنفذ الرئيسي 7860، وتشغيل واجهة التحكم داخلياً على 8501
 # سيقوم البوت بعمل Proxy لطلبات الواجهة داخلياً
 CMD ["sh", "-c", "streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0 & npm start"]
-
-
