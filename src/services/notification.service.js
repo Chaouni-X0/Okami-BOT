@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { sendFbMessage } from '../sendFbMessage.js';
 import db from '../database/db.js';
 import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
@@ -32,8 +32,7 @@ export class NotificationService {
         
         for (const note of pending) {
             try {
-                // ملاحظة: إرسال الرسائل يتطلب Messenger API و User PSID
-                // هنا نقوم بمحاكاة الإرسال أو استخدام التعليقات كبديل
+                // استخدام sendFbMessage بدلاً من exec/curl
                 await this.sendFacebookMessage(note.user_fb_id, note.message);
                 db.prepare('UPDATE notifications SET is_sent = 1 WHERE id = ?').run(note.id);
                 logger.info(`Notification sent to ${note.user_fb_id}`);
@@ -44,44 +43,20 @@ export class NotificationService {
     }
 
     static async sendFacebookMessage(recipientId, text) {
-        const { exec } = await import('child_process');
-        
         const token = config.facebook.accessToken;
         if (!token) {
             logger.error("[SEND] Error: FACEBOOK_ACCESS_TOKEN is missing!");
             return false;
         }
 
-        const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${token}`;
-        const payload = JSON.stringify({
-            recipient: { id: recipientId },
-            message: { text: text }
-        });
-
-        const safePayload = payload.replace(/'/g, "'\\''");
-
-        const command = `curl -4 -s -S --connect-timeout 5 -m 10 -X POST -H "Content-Type: application/json" -d '${safePayload}' "${url}"`;
-
-        logger.info(`[SEND] Attempting notification to ${recipientId}...`);
-        
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                logger.error(`[SEND] OS/Curl Execution Error: ${error.message}`);
-                return;
-            }
-            try {
-                const data = JSON.parse(stdout);
-                if (data.error) {
-                    logger.error(`[SEND] Facebook API Error: ${JSON.stringify(data.error)}`);
-                } else {
-                    logger.info(`[SEND] Notification Success! ID: ${data.message_id}`);
-                }
-            } catch (e) {
-                logger.error(`[SEND] Raw Response: ${stdout || 'EMPTY'}`);
-            }
-        });
-
-        return true;
+        try {
+            await sendFbMessage(recipientId, { text });
+            logger.info(`[SEND] Notification Success! to ${recipientId}`);
+            return true;
+        } catch (err) {
+            logger.error(`[SEND] Facebook API Error: ${err.response?.data || err.message}`);
+            return false;
+        }
     }
 
     static async broadcast(message) {
