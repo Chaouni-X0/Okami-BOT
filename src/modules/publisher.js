@@ -2,10 +2,11 @@ import FormData from 'form-data';
 import fs from 'fs';
 import { config } from '../config/config.enhanced.js';
 import logger from '../utils/logger.js';
+import { sendFbMessage } from '../sendFbMessage.js';
 
 export class FacebookPublisher {
     static baseUrl = `https://graph.facebook.com/v19.0/${config.facebook.pageId}`;
-    static accessToken = process.env.FACEBOOK_ACCESS_TOKEN.trim();
+    static accessToken = process.env.FACEBOOK_ACCESS_TOKEN?.trim();
 
     static async publishChapter(imagePaths, message) {
         try {
@@ -63,48 +64,20 @@ export class FacebookPublisher {
     }
 
     static async sendDirectMessage(recipientId, text) {
-        const { exec } = await import('child_process');
-        
         const token = this.accessToken;
         if (!token) {
             logger.error("[SEND] Error: FACEBOOK_ACCESS_TOKEN is missing!");
             return false;
         }
 
-        // العودة إلى v19.0 كما في الكود الأصلي لضمان التوافق
-        const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${token}`;
-        const payload = JSON.stringify({
-            recipient: { id: recipientId },
-            message: { text: text }
-        });
-
-        const safePayload = payload.replace(/'/g, "'\\''");
-
-        // إزالة & لقراءة الخطأ، واستخدام -i لعرض الهيدرز إذا لزم الأمر
-        const command = `curl -4 -s -S --connect-timeout 5 -m 10 -X POST -H "Content-Type: application/json" -d '${safePayload}' "${url}"`;
-
-        logger.info(`[SEND] Attempting send to ${recipientId}...`);
-        
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                logger.error(`[SEND] OS/Curl Execution Error: ${error.message}`);
-                return;
-            }
-            if (stderr) logger.warn(`[SEND] Curl Stderr: ${stderr}`);
-            
-            try {
-                const data = JSON.parse(stdout);
-                if (data.error) {
-                    logger.error(`[SEND] Facebook API Error: ${JSON.stringify(data.error)}`);
-                } else {
-                    logger.info(`[SEND] Success! Message ID: ${data.message_id}`);
-                }
-            } catch (e) {
-                logger.error(`[SEND] Raw Response from FB: ${stdout || 'EMPTY RESPONSE'}`);
-            }
-        });
-
-        return true;
+        try {
+            await sendFbMessage(recipientId, { text });
+            logger.info(`[SEND] Success (via axios) to ${recipientId}`);
+            return true;
+        } catch (err) {
+            logger.error(`[SEND] Facebook API Error: ${err.response?.data || err.message}`);
+            return false;
+        }
     }
 
     /**
@@ -115,16 +88,7 @@ export class FacebookPublisher {
             const partTitle = mangaData.partNumber ? `(الجزء ${mangaData.partNumber})` : '';
             const rangeText = `الفصول: من ${mangaData.startChapter} إلى ${mangaData.endChapter}`;
             
-            const message = `
-🐺 المنشور التجميعي لمانهوا: ${mangaData.title} ${partTitle}
-📊 الحالة: ${mangaData.status === 'Ongoing' ? 'مستمرة 🟢' : 'مكتملة 🔴'}
-📌 ${rangeText}
-
-🔗 روابط الفصول في هذا الجزء:
-${chapters.map(c => `🔹 الفصل ${c.chapter_number}: https://facebook.com/${c.fb_post_id}`).join('\n')}
-
-#OkamiBot #Manga #Aggregation #Part${mangaData.partNumber || 1}
-            `.trim();
+            const message = `\n🐺 المنشور التجميعي لمانهوا: ${mangaData.title} ${partTitle}\n📊 الحالة: ${mangaData.status === 'Ongoing' ? 'مستمرة 🟢' : 'مكتملة 🔴'}\n📌 ${rangeText}\n\n🔗 روابط الفصول في هذا الجزء:\n${chapters.map(c => `🔹 الفصل ${c.chapter_number}: https://facebook.com/${c.fb_post_id}`).join('\n')}\n\n#OkamiBot #Manga #Aggregation #Part${mangaData.partNumber || 1}`.trim();
 
             // ملاحظة: فيسبوك لديه حد لعدد الكلمات، لذا نقوم بتقليص الرسالة إذا كانت طويلة جداً
             const finalMessage = message.length > 8000 ? message.substring(0, 7900) + "...\n(يتبع في تعليق)" : message;
