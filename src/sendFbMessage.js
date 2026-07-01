@@ -1,12 +1,8 @@
-const axios = require('axios');
+import axios from 'axios';
 
-/**
- * sendFbMessage(recipientId, messageObj)
- * messageObj: { text: '...' } أو البنية التي تستخدمها حالياً في البوت
- */
-async function sendFbMessage(recipientId, messageObj) {
+export async function sendFbMessage(recipientId, messageObj) {
   const token = process.env.FACEBOOK_ACCESS_TOKEN;
-  if (!token) throw new Error('FB_ACCESS_TOKEN غير معرف في المتغيرات البيئية');
+  if (!token) throw new Error('FACEBOOK_ACCESS_TOKEN غير معرف');
 
   const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${encodeURIComponent(token)}`;
   const payload = {
@@ -25,5 +21,3 @@ async function sendFbMessage(recipientId, messageObj) {
     throw err;
   }
 }
-
-module.exports = { sendFbMessage };
