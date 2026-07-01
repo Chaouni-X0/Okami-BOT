@@ -71,7 +71,8 @@ export class FacebookPublisher {
             return false;
         }
 
-        const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${token}`;
+        // العودة إلى v19.0 كما في الكود الأصلي لضمان التوافق
+        const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${token}`;
         const payload = JSON.stringify({
             recipient: { id: recipientId },
             message: { text: text }
@@ -79,18 +80,31 @@ export class FacebookPublisher {
 
         const safePayload = payload.replace(/'/g, "'\\''");
 
-        // تحسين Curl: تقليل Timeout لـ 5 ثوانٍ، تفعيل TCP Fast Open، وعدم انتظار النتيجة (Fire & Forget)
-        // إضافة & في النهاية تجعل الأمر يعمل في الخلفية
-        const command = `curl -4 -s --connect-timeout 3 -m 5 --tcp-fastopen -X POST -H "Content-Type: application/json" -d '${safePayload}' "${url}" &`;
+        // إزالة & لقراءة الخطأ، واستخدام -i لعرض الهيدرز إذا لزم الأمر
+        const command = `curl -4 -s -S --connect-timeout 5 -m 10 -X POST -H "Content-Type: application/json" -d '${safePayload}' "${url}"`;
 
-        logger.info(`[SEND] Fast-dispatching to ${recipientId} via OS Curl...`);
+        logger.info(`[SEND] Attempting send to ${recipientId}...`);
         
-        // تنفيذ بدون انتظار الوعد (Promise) لضمان سرعة الرد للمستخدم
-        exec(command, (error) => {
-            if (error) logger.error(`[SEND] Background OS/Curl Error: ${error.message}`);
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                logger.error(`[SEND] OS/Curl Execution Error: ${error.message}`);
+                return;
+            }
+            if (stderr) logger.warn(`[SEND] Curl Stderr: ${stderr}`);
+            
+            try {
+                const data = JSON.parse(stdout);
+                if (data.error) {
+                    logger.error(`[SEND] Facebook API Error: ${JSON.stringify(data.error)}`);
+                } else {
+                    logger.info(`[SEND] Success! Message ID: ${data.message_id}`);
+                }
+            } catch (e) {
+                logger.error(`[SEND] Raw Response from FB: ${stdout || 'EMPTY RESPONSE'}`);
+            }
         });
 
-        return true; // نرجع true فوراً لأننا أرسلنا الطلب للخلفية
+        return true;
     }
 
     /**

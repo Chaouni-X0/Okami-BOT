@@ -52,7 +52,7 @@ export class NotificationService {
             return false;
         }
 
-        const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${token}`;
+        const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${token}`;
         const payload = JSON.stringify({
             recipient: { id: recipientId },
             message: { text: text }
@@ -60,13 +60,25 @@ export class NotificationService {
 
         const safePayload = payload.replace(/'/g, "'\\''");
 
-        // تحسين Curl: إرسال في الخلفية لضمان عدم تعطيل طابور التنبيهات
-        const command = `curl -4 -s --connect-timeout 3 -m 5 --tcp-fastopen -X POST -H "Content-Type: application/json" -d '${safePayload}' "${url}" &`;
+        const command = `curl -4 -s -S --connect-timeout 5 -m 10 -X POST -H "Content-Type: application/json" -d '${safePayload}' "${url}"`;
 
-        logger.info(`[SEND] Fast-dispatching notification to ${recipientId} via OS Curl...`);
+        logger.info(`[SEND] Attempting notification to ${recipientId}...`);
         
-        exec(command, (error) => {
-            if (error) logger.error(`[SEND] Background OS/Curl Error: ${error.message}`);
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                logger.error(`[SEND] OS/Curl Execution Error: ${error.message}`);
+                return;
+            }
+            try {
+                const data = JSON.parse(stdout);
+                if (data.error) {
+                    logger.error(`[SEND] Facebook API Error: ${JSON.stringify(data.error)}`);
+                } else {
+                    logger.info(`[SEND] Notification Success! ID: ${data.message_id}`);
+                }
+            } catch (e) {
+                logger.error(`[SEND] Raw Response: ${stdout || 'EMPTY'}`);
+            }
         });
 
         return true;
