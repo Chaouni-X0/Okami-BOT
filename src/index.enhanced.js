@@ -67,27 +67,31 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
     const body = req.body;
     if (body.object === 'page') {
-        // رد فوري لفيسبوك لتجنب إعادة إرسال نفس الرسالة (Retry)
+        // 1. رد فوري لفيسبوك في أجزاء من الثانية (أهم خطوة لمنع التكرار والبطء)
         res.status(200).send('EVENT_RECEIVED');
 
-        // معالجة الرسائل في الخلفية لضمان السرعة
-        body.entry.forEach(async (entry) => {
-            if (entry.messaging) {
-                for (const event of entry.messaging) {
-                    const senderId = event.sender.id;
-                    if (event.message && event.message.text) {
-                        logger.info(`[MSG] Received from ${senderId}: "${event.message.text}"`);
-                        // تنفيذ المعالجة والإرسال دون انتظار الاستجابة الكاملة للـ Webhook
-                        DialogueServiceEnhanced.handleMessage(senderId, event.message.text)
-                            .then(responseText => {
+        // 2. معالجة الرسائل في الخلفية بالكامل باستخدام setImmediate
+        setImmediate(() => {
+            body.entry.forEach(async (entry) => {
+                if (entry.messaging) {
+                    for (const event of entry.messaging) {
+                        const senderId = event.sender.id;
+                        if (event.message && event.message.text) {
+                            logger.info(`[MSG] Received from ${senderId}: "${event.message.text}"`);
+                            try {
+                                // معالجة الحوار (قد تأخذ وقتاً، لذا هي في الخلفية)
+                                const responseText = await DialogueServiceEnhanced.handleMessage(senderId, event.message.text);
                                 if (responseText) {
+                                    // إرسال الرد (أيضاً لا ننتظره هنا لأنه يستخدم Curl في الخلفية أصلاً)
                                     FacebookPublisher.sendDirectMessage(senderId, responseText);
                                 }
-                            })
-                            .catch(err => logger.error(`[MSG] Error handling message: ${err.message}`));
+                            } catch (err) {
+                                logger.error(`[MSG] Background Processing Error: ${err.message}`);
+                            }
+                        }
                     }
                 }
-            }
+            });
         });
     } else {
         res.sendStatus(404);
