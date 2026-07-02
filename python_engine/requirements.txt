@@ -6,5 +6,5 @@ uvicorn
 python-dotenv
 aiohttp
 asyncio
- Pillow
-
+Pillow
+bs4

@@ -3,7 +3,14 @@ import asyncio
 import aiohttp
 import random
 import cloudscraper
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    try:
+        from BeautifulSoup import BeautifulSoup
+    except ImportError:
+        # This will raise a clear error if not installed
+        import BeautifulSoup
 from typing import List, Dict, Any, Optional
 from utils.logger import logger
 
