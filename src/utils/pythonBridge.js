@@ -29,11 +29,18 @@ export class PythonBridge {
             const pythonProcess = spawn(pythonCmd, args, { cwd: pythonEngineDir });
 
             pythonProcess.on('error', (err) => {
-                if (err.code === 'ENOENT') {
+                if (err.code === 'ENOENT' && pythonCmd !== 'python') {
                     logger.error(`[PythonBridge] Failed to start python process. '${pythonCmd}' not found. Trying 'python'...`);
                     const fallbackProcess = spawn('python', args, { cwd: pythonEngineDir });
+                    
+                    fallbackProcess.on('error', (fallbackErr) => {
+                        logger.error(`[PythonBridge] Fallback to 'python' also failed: ${fallbackErr.message}`);
+                        reject(new Error(`Python not found (tried ${pythonCmd} and python)`));
+                    });
+
                     this._setupProcess(fallbackProcess, resolve, reject);
                 } else {
+                    logger.error(`[PythonBridge] Process error: ${err.message}`);
                     reject(err);
                 }
             });

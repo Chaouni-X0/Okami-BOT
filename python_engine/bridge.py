@@ -4,8 +4,10 @@ import json
 import argparse
 import os
 
-# Add the current directory to path to ensure imports work correctly
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Ensure the root directory of the python engine is in the path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
 from core.manager import ScraperManager
 from scrapers.wp_manga_scraper import WPMangaScraper
