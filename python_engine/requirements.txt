@@ -1,0 +1,10 @@
+requests
+beautifulsoup4
+cloudscraper
+fastapi
+uvicorn
+python-dotenv
+aiohttp
+asyncio
+ Pillow
+
