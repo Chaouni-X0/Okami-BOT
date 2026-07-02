@@ -1,0 +1,114 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Okami Bot Monitoring Dashboard</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a2e; color: #fff; margin: 0; padding: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: #16213e; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .status-bar { padding: 10px 20px; border-radius: 5px; margin-bottom: 20px; font-weight: bold; text-align: center; }
+        .status-ok { background: #28a745; }
+        .status-degraded { background: #ffc107; color: #000; }
+        .status-down { background: #dc3545; }
+        .metric-value { font-size: 2em; color: #4ecca3; }
+        .log-container { height: 300px; overflow-y: auto; background: #0f3460; padding: 10px; font-family: monospace; font-size: 0.9em; border-radius: 5px; }
+        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #16213e; padding-bottom: 2px; }
+        .log-error { color: #ff4d4d; }
+        .log-info { color: #4ecca3; }
+        .ai-panel { border-left: 4px solid #4ecca3; }
+        h2 { margin-top: 0; border-bottom: 1px solid #4ecca3; padding-bottom: 10px; }
+        .recommendation { background: #0f3460; padding: 10px; border-radius: 5px; margin-top: 10px; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <h1>🐺 Okami Bot Dashboard</h1>
+
+    <div id="status-bar" class="status-bar status-ok">جاري التحميل...</div>
+
+    <div class="grid">
+        <!-- Metrics -->
+        <div class="card">
+            <h2>📊 المقاييس (Metrics)</h2>
+            <div>إجمالي الرسائل: <span id="total-messages" class="metric-value">0</span></div>
+            <div>نسبة النجاح: <span id="success-rate" class="metric-value">0%</span></div>
+            <div>متوسط وقت الاستجابة: <span id="avg-time" class="metric-value">0ms</span></div>
+        </div>
+
+        <!-- AI Debugger -->
+        <div class="card ai-panel">
+            <h2>🧠 AI Debugger</h2>
+            <div id="ai-issues">لا توجد مشاكل مكتشفة.</div>
+            <div id="ai-recommendations"></div>
+        </div>
+    </div>
+
+    <div class="grid" style="margin-top: 20px;">
+        <!-- Live Logs -->
+        <div class="card" style="grid-column: span 2;">
+            <h2>📜 السجلات الحية (Live Logs)</h2>
+            <div id="log-container" class="log-container"></div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchData() {
+            try {
+                const [logsRes, metricsRes, debugRes] = await Promise.all([
+                    fetch('/api/logs'),
+                    fetch('/api/metrics'),
+                    fetch('/api/debugger')
+                ]);
+
+                const logs = await logsRes.json();
+                const metrics = await metricsRes.json();
+                const debug = await debugRes.json();
+
+                // Update Status
+                const statusBar = document.getElementById('status-bar');
+                statusBar.innerText = `حالة النظام: ${debug.systemStatus}`;
+                statusBar.className = `status-bar status-${debug.systemStatus.toLowerCase()}`;
+
+                // Update Metrics
+                document.getElementById('total-messages').innerText = metrics.total_messages;
+                document.getElementById('success-rate').innerText = metrics.success_rate + '%';
+                document.getElementById('avg-time').innerText = metrics.avg_response_time + 'ms';
+
+                // Update Logs
+                const logContainer = document.getElementById('log-container');
+                logContainer.innerHTML = logs.map(l => `
+                    <div class="log-entry ${l.level === 'error' ? 'log-error' : 'log-info'}">
+                        [${l.timestamp.split('T')[1].split('.')[0]}] [${l.event}] ${l.message}
+                    </div>
+                `).join('');
+
+                // Update AI Debugger
+                const issuesContainer = document.getElementById('ai-issues');
+                if (debug.lastIssues.length > 0) {
+                    issuesContainer.innerHTML = debug.lastIssues.map(i => `
+                        <div style="color: #ff4d4d; margin-bottom: 10px;">
+                            <strong>[${i.type}]</strong>: ${i.severity} severity
+                        </div>
+                    `).join('');
+                } else {
+                    issuesContainer.innerText = "لا توجد مشاكل مكتشفة.";
+                }
+
+                const recContainer = document.getElementById('ai-recommendations');
+                recContainer.innerHTML = debug.recommendations.map(r => `
+                    <div class="recommendation">💡 ${r}</div>
+                `).join('');
+
+            } catch (err) {
+                console.error("Error fetching dashboard data:", err);
+            }
+        }
+
+        setInterval(fetchData, 3000);
+        fetchData();
+    </script>
+</body>
+</html>

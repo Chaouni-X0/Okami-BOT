@@ -1,0 +1,20 @@
+{
+  "name": "okami-bot-webhook",
+  "version": "1.0.0",
+  "description": "Facebook Messenger bot with dual database support",
+  "type": "module",
+  "main": "src/index.enhanced.js",
+  "scripts": {
+    "start": "node src/index.enhanced.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "axios": "^1.6.8",
+    "p-queue": "^8.0.1",
+    "winston": "^3.11.0",
+    "mongoose": "^8.0.0",
+    "better-sqlite3": "^9.0.0",
+    "dotenv": "^16.0.0",
+    "form-data": "^4.0.0"
+  }
+}
