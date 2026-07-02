@@ -1,6 +1,7 @@
-import os
 import aiohttp
 import asyncio
+import os
+from typing import Optional, List
 from PIL import Image
 from io import BytesIO
 from utils.logger import logger
