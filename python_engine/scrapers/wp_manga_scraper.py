@@ -1,6 +1,9 @@
-from core.base_scraper import BaseScraper
 from typing import List, Dict, Any, Optional
 import re
+try:
+    from core.base_scraper import BaseScraper
+except ImportError:
+    from ..core.base_scraper import BaseScraper
 
 class WPMangaScraper(BaseScraper):
     """Generic scraper for sites using the WP-Manga (Madara) theme."""

@@ -1,6 +1,9 @@
-from core.base_scraper import BaseScraper
 from typing import List, Dict, Any, Optional
 import json
+try:
+    from core.base_scraper import BaseScraper
+except ImportError:
+    from ..core.base_scraper import BaseScraper
 
 class GMangaScraper(BaseScraper):
     def __init__(self):

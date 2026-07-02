@@ -1,5 +1,8 @@
-from core.base_scraper import BaseScraper
 from typing import List, Dict, Any, Optional
+try:
+    from core.base_scraper import BaseScraper
+except ImportError:
+    from ..core.base_scraper import BaseScraper
 
 class MangaDexScraper(BaseScraper):
     def __init__(self):
