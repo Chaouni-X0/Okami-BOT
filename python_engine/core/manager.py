@@ -1,7 +1,9 @@
 import asyncio
 from typing import List, Dict, Any, Optional
-
-from core.base_scraper import BaseScraper
+try:
+    from core.base_scraper import BaseScraper
+except ImportError:
+    from .base_scraper import BaseScraper
 from utils.logger import logger
 
 class ScraperManager:
@@ -26,6 +28,7 @@ class ScraperManager:
 
     async def _run_search_with_fallback(self, scraper: BaseScraper, query: str) -> List[Dict[str, Any]]:
         try:
+            await scraper.get_session()
             return await scraper.search(query)
         except Exception as e:
             logger.error(f"Search failed for {scraper.source_name}: {e}")
@@ -37,6 +40,7 @@ class ScraperManager:
             logger.warning(f"Scraper for source {source_name} not found.")
             return None
         try:
+            await scraper.get_session()
             return await scraper.get_manga_info(url)
         except Exception as e:
             logger.error(f"Failed to get manga info from {source_name} ({url}): {e}")
@@ -48,6 +52,7 @@ class ScraperManager:
             logger.warning(f"Scraper for source {source_name} not found.")
             return []
         try:
+            await scraper.get_session()
             return await scraper.get_chapters(url)
         except Exception as e:
             logger.error(f"Failed to get chapters from {source_name} ({url}): {e}")
@@ -59,6 +64,7 @@ class ScraperManager:
             logger.warning(f"Scraper for source {source_name} not found.")
             return []
         try:
+            await scraper.get_session()
             return await scraper.get_chapter_images(chapter_url)
         except Exception as e:
             logger.error(f"Failed to get chapter images from {source_name} ({chapter_url}): {e}")
@@ -66,5 +72,8 @@ class ScraperManager:
 
     async def close_all(self):
         for scraper in self.scrapers.values():
-            await scraper.close()
+            try:
+                await scraper.close()
+            except:
+                pass
         logger.info("All scrapers closed.")

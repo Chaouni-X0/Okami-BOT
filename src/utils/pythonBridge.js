@@ -1,11 +1,18 @@
 import { spawn } from 'child_process';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import logger from './logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class PythonBridge {
     static async call(action, params = {}) {
         return new Promise((resolve, reject) => {
-            const bridgePath = path.resolve('python_engine/bridge.py');
+            // Use absolute path for bridge.py to avoid issues in different environments
+            const bridgePath = path.resolve(__dirname, '../../python_engine/bridge.py');
+            const pythonEngineDir = path.resolve(__dirname, '../../python_engine');
+            
             const args = [bridgePath, action];
             
             for (const [key, value] of Object.entries(params)) {
@@ -16,35 +23,38 @@ export class PythonBridge {
             const pythonCmd = process.env.PYTHON_PATH || 'python3';
             logger.info(`[PythonBridge] Executing: ${pythonCmd} ${args.join(' ')}`);
             
-            const process = spawn(pythonCmd, args, { cwd: path.resolve('python_engine') });
+            // Note: spawn is from child_process, not global. 
+            // The error 'Cannot access process before initialization' was due to using 'process' 
+            // as a variable name while it's also a global object.
+            const pythonProcess = spawn(pythonCmd, args, { cwd: pythonEngineDir });
 
-            process.on('error', (err) => {
+            pythonProcess.on('error', (err) => {
                 if (err.code === 'ENOENT') {
                     logger.error(`[PythonBridge] Failed to start python process. '${pythonCmd}' not found. Trying 'python'...`);
-                    const fallbackProcess = spawn('python', args, { cwd: path.resolve('python_engine') });
+                    const fallbackProcess = spawn('python', args, { cwd: pythonEngineDir });
                     this._setupProcess(fallbackProcess, resolve, reject);
                 } else {
                     reject(err);
                 }
             });
 
-            this._setupProcess(process, resolve, reject);
+            this._setupProcess(pythonProcess, resolve, reject);
         });
     }
 
-    static _setupProcess(process, resolve, reject) {
+    static _setupProcess(pythonProcess, resolve, reject) {
         let data = '';
         let error = '';
 
-        process.stdout.on('data', (chunk) => {
+        pythonProcess.stdout.on('data', (chunk) => {
             data += chunk.toString();
         });
 
-        process.stderr.on('data', (chunk) => {
+        pythonProcess.stderr.on('data', (chunk) => {
             error += chunk.toString();
         });
 
-        process.on('close', (code) => {
+        pythonProcess.on('close', (code) => {
             if (code !== 0) {
                 logger.error(`[PythonBridge] Error: ${error}`);
                 reject(new Error(error || `Process exited with code ${code}`));
