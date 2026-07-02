@@ -44,7 +44,12 @@ class MangaDexScraper(BaseScraper):
     async def get_chapters(self, url: str) -> List[Dict[str, Any]]:
         manga_id = url.split('/')[-1]
         api_url = f"{self.base_url}/manga/{manga_id}/feed"
-        params = {'translatedLanguage[]': ['en', 'ar'], 'limit': 100, 'order[chapter]': 'desc'}
+        params = {
+            'translatedLanguage[]': ['en', 'ar'],
+            'limit': 100,
+            'order[chapter]': 'desc',
+            'includeExternalResource': 0
+        }
         data = await self.fetch_json(api_url, params=params)
         if not data: return []
         

@@ -1,0 +1,36 @@
+2026-07-02 20:22:35,338 - MangaScraper - INFO - Initialized ScraperManager with 4 scrapers.
+2026-07-02 20:22:37,679 - MangaScraper - ERROR - Attempt 1 failed for https://api.mangadex.org/manga: 400, message='Bad Request', url='https://api.mangadex.org/manga?title=Return+of+the+Mount+Hua+Sect&limit=10'
+2026-07-02 20:22:38,277 - MangaScraper - ERROR - Attempt 1 failed for https://gmanga.me/api/mangas/search: 403, message='Forbidden', url='https://gmanga.me/api/mangas/search?title=Return+of+the+Mount+Hua+Sect'
+2026-07-02 20:22:39,271 - MangaScraper - ERROR - Attempt 2 failed for https://api.mangadex.org/manga: 400, message='Bad Request', url='https://api.mangadex.org/manga?title=Return+of+the+Mount+Hua+Sect&limit=10'
+2026-07-02 20:22:39,439 - MangaScraper - ERROR - Attempt 1 failed for https://mangaarab.com/?s=Return of the Mount Hua Sect&post_type=wp-manga: Cannot connect to host mangaarab.com:443 ssl:default [None]
+2026-07-02 20:22:41,581 - MangaScraper - ERROR - Attempt 2 failed for https://gmanga.me/api/mangas/search: 403, message='Forbidden', url='https://gmanga.me/api/mangas/search?title=Return+of+the+Mount+Hua+Sect'
+2026-07-02 20:22:41,865 - MangaScraper - ERROR - Attempt 3 failed for https://api.mangadex.org/manga: 400, message='Bad Request', url='https://api.mangadex.org/manga?title=Return+of+the+Mount+Hua+Sect&limit=10'
+2026-07-02 20:22:45,549 - MangaScraper - ERROR - Attempt 2 failed for https://mangaarab.com/?s=Return of the Mount Hua Sect&post_type=wp-manga: Cannot connect to host mangaarab.com:443 ssl:default [None]
+2026-07-02 20:22:45,641 - MangaScraper - ERROR - Attempt 3 failed for https://gmanga.me/api/mangas/search: 403, message='Forbidden', url='https://gmanga.me/api/mangas/search?title=Return+of+the+Mount+Hua+Sect'
+2026-07-02 20:23:00,984 - MangaScraper - ERROR - Attempt 3 failed for https://mangaarab.com/?s=Return of the Mount Hua Sect&post_type=wp-manga: Cannot connect to host mangaarab.com:443 ssl:default [None]
+2026-07-02 20:23:00,984 - MangaScraper - INFO - Found 0 results for query: Return of the Mount Hua Sect
+2026-07-02 20:23:00,985 - MangaScraper - INFO - All scrapers closed.
+2026-07-02 20:23:24,523 - MangaScraper - INFO - Initialized ScraperManager with 4 scrapers.
+2026-07-02 20:23:25,051 - MangaScraper - ERROR - Attempt 1 failed for https://gmanga.me/api/mangas/search using cloudscraper: 403 Client Error: Forbidden for url: https://gmanga.me/api/mangas/search?title=Return+of+the+Mount+Hua+Sect
+2026-07-02 20:23:26,187 - MangaScraper - ERROR - Attempt 2 failed for https://gmanga.me/api/mangas/search using cloudscraper: 403 Client Error: Forbidden for url: https://gmanga.me/api/mangas/search?title=Return+of+the+Mount+Hua+Sect
+2026-07-02 20:23:27,437 - MangaScraper - ERROR - Attempt 1 failed for https://api.mangadex.org/manga: 400, message='Bad Request', url='https://api.mangadex.org/manga?title=Return+of+the+Mount+Hua+Sect&limit=10'
+2026-07-02 20:23:28,306 - MangaScraper - ERROR - Attempt 3 failed for https://gmanga.me/api/mangas/search using cloudscraper: 403 Client Error: Forbidden for url: https://gmanga.me/api/mangas/search?title=Return+of+the+Mount+Hua+Sect
+2026-07-02 20:23:29,051 - MangaScraper - ERROR - Attempt 2 failed for https://api.mangadex.org/manga: 400, message='Bad Request', url='https://api.mangadex.org/manga?title=Return+of+the+Mount+Hua+Sect&limit=10'
+2026-07-02 20:23:29,451 - MangaScraper - ERROR - Attempt 1 failed for https://mangaarab.com/?s=Return of the Mount Hua Sect&post_type=wp-manga: Cannot connect to host mangaarab.com:443 ssl:default [None]
+2026-07-02 20:23:31,669 - MangaScraper - ERROR - Attempt 3 failed for https://api.mangadex.org/manga: 400, message='Bad Request', url='https://api.mangadex.org/manga?title=Return+of+the+Mount+Hua+Sect&limit=10'
+2026-07-02 20:23:38,975 - MangaScraper - ERROR - Attempt 2 failed for https://mangaarab.com/?s=Return of the Mount Hua Sect&post_type=wp-manga: Cannot connect to host mangaarab.com:443 ssl:default [None]
+2026-07-02 20:23:50,733 - MangaScraper - ERROR - Attempt 3 failed for https://mangaarab.com/?s=Return of the Mount Hua Sect&post_type=wp-manga: Cannot connect to host mangaarab.com:443 ssl:default [None]
+2026-07-02 20:23:50,733 - MangaScraper - INFO - Found 0 results for query: Return of the Mount Hua Sect
+2026-07-02 20:23:50,733 - MangaScraper - INFO - All scrapers closed.
+2026-07-02 20:24:04,282 - MangaScraper - INFO - Initialized ScraperManager with 4 scrapers.
+2026-07-02 20:24:06,483 - MangaScraper - ERROR - Attempt 1 failed for https://gmanga.me/api/mangas/search using cloudscraper: 403 Client Error: Forbidden for url: https://gmanga.me/api/mangas/search?title=solo+leveling
+2026-07-02 20:24:06,948 - MangaScraper - ERROR - Attempt 1 failed for https://api.mangadex.org/manga: 400, message='Bad Request', url='https://api.mangadex.org/manga?title=solo+leveling&limit=10&includes%5B%5D=cover_art&contentRating%5B%5D=safe&contentRating%5B%5D=suggestive&contentRating%5B%5D=erotica'
+2026-07-02 20:24:08,111 - MangaScraper - ERROR - Attempt 2 failed for https://gmanga.me/api/mangas/search using cloudscraper: 403 Client Error: Forbidden for url: https://gmanga.me/api/mangas/search?title=solo+leveling
+2026-07-02 20:24:08,914 - MangaScraper - ERROR - Attempt 2 failed for https://api.mangadex.org/manga: 400, message='Bad Request', url='https://api.mangadex.org/manga?title=solo+leveling&limit=10&includes%5B%5D=cover_art&contentRating%5B%5D=safe&contentRating%5B%5D=suggestive&contentRating%5B%5D=erotica'
+2026-07-02 20:24:10,725 - MangaScraper - ERROR - Attempt 3 failed for https://gmanga.me/api/mangas/search using cloudscraper: 403 Client Error: Forbidden for url: https://gmanga.me/api/mangas/search?title=solo+leveling
+2026-07-02 20:24:11,644 - MangaScraper - ERROR - Attempt 3 failed for https://api.mangadex.org/manga: 400, message='Bad Request', url='https://api.mangadex.org/manga?title=solo+leveling&limit=10&includes%5B%5D=cover_art&contentRating%5B%5D=safe&contentRating%5B%5D=suggestive&contentRating%5B%5D=erotica'
+2026-07-02 20:24:16,084 - MangaScraper - ERROR - Attempt 1 failed for https://mangaarab.com/?s=solo%20leveling&post_type=wp-manga: Cannot connect to host mangaarab.com:443 ssl:default [None]
+2026-07-02 20:24:29,312 - MangaScraper - ERROR - Attempt 2 failed for https://mangaarab.com/?s=solo%20leveling&post_type=wp-manga: Cannot connect to host mangaarab.com:443 ssl:default [None]
+2026-07-02 20:24:42,559 - MangaScraper - ERROR - Attempt 3 failed for https://mangaarab.com/?s=solo%20leveling&post_type=wp-manga: Cannot connect to host mangaarab.com:443 ssl:default [None]
+2026-07-02 20:24:42,559 - MangaScraper - INFO - Found 0 results for query: solo leveling
+2026-07-02 20:24:42,560 - MangaScraper - INFO - All scrapers closed.

@@ -9,19 +9,31 @@ class WPMangaScraper(BaseScraper):
     """Generic scraper for sites using the WP-Manga (Madara) theme."""
     
     async def search(self, query: str) -> List[Dict[str, Any]]:
-        url = f"{self.base_url}/?s={query}&post_type=wp-manga"
+        from urllib.parse import quote
+        url = f"{self.base_url}/?s={quote(query)}&post_type=wp-manga"
         soup = await self.fetch_html(url)
         if not soup: return []
         
         results = []
-        for item in soup.select('.c-tabs-item__content, .search-wrap .manga-item'):
-            title_tag = item.select_one('h3 a, .post-title a')
-            if title_tag:
-                results.append({
-                    'title': title_tag.text.strip(),
-                    'url': title_tag['href'],
-                    'source': self.source_name
-                })
+        # Try multiple common selectors for Madara theme search results
+        items = soup.select('.c-tabs-item__content') or \
+                soup.select('.search-wrap .manga-item') or \
+                soup.select('.row.c-tabs-item__content') or \
+                soup.select('.tabbed-content .post-title a')
+        
+        if not items and soup.select('.post-title a'):
+            items = soup.select('.post-title a')
+
+        for item in items:
+            title_tag = item if item.name == 'a' else item.select_one('h3 a, .post-title a, a')
+            if title_tag and title_tag.get('href'):
+                title = title_tag.text.strip()
+                if title:
+                    results.append({
+                        'title': title,
+                        'url': title_tag['href'],
+                        'source': self.source_name
+                    })
         return results
 
     async def get_manga_info(self, url: str) -> Dict[str, Any]:
