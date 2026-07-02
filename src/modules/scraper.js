@@ -37,13 +37,30 @@ export class ScraperEngine {
                 results = await this.searchWPManga(source, query);
             } else if (source.type === 'api' && source.id === 'mangadex') {
                 results = await this.searchMangaDex(query);
+            } else if (source.id === 'gmanga') {
+                results = await this.searchGManga(query);
             } else {
-                // Fallback or custom logic for others
                 results = await this.searchGeneric(source, query);
             }
             return results;
         } catch (error) {
             logger.error(`Search failed for ${sourceId}: ${error.message}`);
+            return [];
+        }
+    }
+
+    async searchGManga(query) {
+        try {
+            const response = await axios.get(`https://gmanga.me/api/mangas/search`, {
+                params: { title: query },
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            return response.data.mangas.map(m => ({
+                title: m.title,
+                url: `https://gmanga.me/mangas/${m.id}/${m.slug}`,
+                id: m.id
+            }));
+        } catch (e) {
             return [];
         }
     }
