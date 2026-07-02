@@ -7,13 +7,15 @@ dotenv.config();
 const DATA_DIR = process.env.DATA_DIR || './data';
 
 export const config = {
+    port: process.env.PORT || 3000,
     facebook: {
-        accessToken: process.env.FB_ACCESS_TOKEN || 'EAAVfEISz5KkBRZBWnJrC3EZCbuIISxhIZAx6hsX2wzaZC7U2ob94pdufWJeeogfkKsbnzE5w5ecBWc9YuqFihNEDNNXHTMxZBNyNgmKvRmxZBDyMMWVZBfIS1RqA1ejkKYleuZCzY4FZAZBwTIoWLuDeEbnNEjmyaUJZC98kvKXW4r8ITP8uAWEUGMafuhoGeqZA8ZCdBwoFp9qoq',
-        pageId: process.env.FB_PAGE_ID || '1211757672016850',
+        accessToken: process.env.PAGE_ACCESS_TOKEN || process.env.FB_ACCESS_TOKEN,
+        pageId: process.env.FB_PAGE_ID,
         appSecret: process.env.FB_APP_SECRET,
+        verifyToken: process.env.VERIFY_TOKEN || 'OKAMI_BOT_VERIFY_TOKEN'
     },
     admin: {
-        activationKey: "chaouni_x_2013-2",
+        activationKey: process.env.ACTIVATION_KEY || "chaouni_x_2013-2",
         password: process.env.ADMIN_PASSWORD || 'OKAMI-BOT__START'
     },
     database: {

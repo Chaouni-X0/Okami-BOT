@@ -1,22 +1,26 @@
 services:
   - type: web
     name: okami-bot
-    env: docker
+    runtime: node
     plan: free
     region: ohio
+    buildCommand: pnpm install
+    startCommand: pnpm start
     healthCheckPath: /status
     envVars:
       - key: DATA_DIR
-        value: /app/data
+        value: ./data
       - key: ADMIN_PASSWORD
         sync: false
-      - key: FB_ACCESS_TOKEN
+      - key: PAGE_ACCESS_TOKEN
         sync: false
       - key: FB_PAGE_ID
         sync: false
-      - key: FB_VERIFY_TOKEN
+      - key: VERIFY_TOKEN
         sync: false
+      - key: NODE_VERSION
+        value: 22.13.0
     disk:
       name: okami-data
-      mountPath: /app/data
+      mountPath: /home/render/project/src/data
       sizeGB: 1
