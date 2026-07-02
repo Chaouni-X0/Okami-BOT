@@ -31,7 +31,8 @@ export class ScraperEngine {
                 throw new Error(data.message);
             }
 
-            return (data.results || []).filter(r => r.source === sourceId).map(r => ({
+            // Case-insensitive filtering to match config ID (e.g. 'mangaswat') with Python source name (e.g. 'MangaSwat')
+            return (data.results || []).filter(r => r.source.toLowerCase() === sourceId.toLowerCase()).map(r => ({
                 ...r,
                 sourceId: r.source,
                 sourceName: r.source

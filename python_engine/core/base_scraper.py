@@ -41,7 +41,9 @@ class BaseScraper(abc.ABC):
         return self._session
 
     async def fetch_html(self, url: str, method: str = 'GET', retries: int = 3, timeout: int = 30, **kwargs) -> Optional[BeautifulSoup]:
-        headers = {'User-Agent': random.choice(self.user_agents)}
+        headers = kwargs.pop('headers', {})
+        if 'User-Agent' not in headers:
+            headers['User-Agent'] = random.choice(self.user_agents)
         session = await self.get_session()
         
         if self.use_cloudscraper:
@@ -71,7 +73,9 @@ class BaseScraper(abc.ABC):
             return None
 
     async def fetch_json(self, url: str, method: str = 'GET', retries: int = 3, timeout: int = 30, **kwargs) -> Optional[Dict[str, Any]]:
-        headers = {'User-Agent': random.choice(self.user_agents)}
+        headers = kwargs.pop('headers', {})
+        if 'User-Agent' not in headers:
+            headers['User-Agent'] = random.choice(self.user_agents)
         session = await self.get_session()
         
         if self.use_cloudscraper:
