@@ -25,17 +25,24 @@ class QueueSystemClass {
                 logger.info(`[Queue] Processing: ${task.mangaTitle} - ${task.chapterName}`);
                 
                 // 1. Get Chapter Images
+                logger.info(`[Queue] Fetching images for: ${task.chapterUrl}`);
                 const images = await scraperEngine.parseChapterImages(task.sourceKey, task.chapterUrl);
                 if (!images || images.length === 0) {
-                    throw new Error("No images found in chapter.");
+                    throw new Error("لم يتم العثور على صور في هذا الفصل. قد يكون الموقع محمي بـ Cloudflare أو يتطلب Scraping متطور.");
                 }
+                logger.info(`[Queue] Found ${images.length} images. Starting download and processing...`);
 
                 // 2. Process/Slice Images
                 const { chapterDir, images: processedImages } = await processor.processChapter(
-                    task.mangaTitle.replace(/\s+/g, '-').toLowerCase(),
+                    task.mangaTitle.replace(/[^\w\u0600-\u06FF]+/g, '-').toLowerCase(),
                     task.chapterName.match(/\d+/)?.[0] || '0',
                     images
                 );
+                
+                if (!processedImages || processedImages.length === 0) {
+                    throw new Error("فشل تحميل أو معالجة الصور. يرجى التحقق من اتصال الخادم بالموقع.");
+                }
+                logger.info(`[Queue] Successfully processed ${processedImages.length} image parts.`);
 
                 // 3. Publish to Facebook
                 const postId = await FacebookPublisher.publishChapter(processedImages, task.customMessage);

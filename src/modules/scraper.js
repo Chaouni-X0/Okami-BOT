@@ -15,13 +15,15 @@ export class ScraperEngine {
         
         results.forEach((res, index) => {
             const source = this.sources[index];
-            res.forEach(item => {
-                allResults.push({
-                    ...item,
-                    sourceId: source.id,
-                    sourceName: source.name
+            if (res && res.length > 0) {
+                res.forEach(item => {
+                    allResults.push({
+                        ...item,
+                        sourceId: source.id,
+                        sourceName: source.name
+                    });
                 });
-            });
+            }
         });
 
         return allResults;
@@ -32,19 +34,46 @@ export class ScraperEngine {
         if (!source) return [];
 
         try {
+            logger.info(`[Scraper] Searching ${source.name} for: ${query}`);
+            let searchUrl = "";
             let results = [];
-            if (source.type === 'wp-manga') {
-                results = await this.searchWPManga(source, query);
-            } else if (source.type === 'api' && source.id === 'mangadex') {
-                results = await this.searchMangaDex(query);
-            } else if (source.id === 'gmanga') {
-                results = await this.searchGManga(query);
-            } else {
-                results = await this.searchGeneric(source, query);
+
+            if (source.id === 'gmanga') {
+                return await this.searchGManga(query);
             }
-            return results;
+
+            if (source.type === 'wp-manga') {
+                searchUrl = `${source.url}/?s=${encodeURIComponent(query)}&post_type=wp-manga`;
+            } else {
+                searchUrl = `${source.url}/?s=${encodeURIComponent(query)}`;
+            }
+
+            const { data } = await axios.get(searchUrl, {
+                headers: { 'User-Agent': config.scraping.userAgent },
+                timeout: 15000
+            });
+            const $ = cheerio.load(data);
+
+            // Selectors based on common themes (Madara, MangaStream, etc.)
+            $('.c-tabs-item__content, .search-wrap .manga-item, .listupd .bs, .page-item-detail').each((i, el) => {
+                const title = $(el).find('h3 a, .post-title a, .tt a').text().trim();
+                const url = $(el).find('h3 a, .post-title a, .tt a').attr('href');
+                if (title && url) results.push({ title, url });
+            });
+
+            // Fallback for simpler sites
+            if (results.length === 0) {
+                $('a').each((i, el) => {
+                    const text = $(el).text().toLowerCase();
+                    if (text.includes(query.toLowerCase()) && $(el).attr('href')?.includes('/manga/')) {
+                        results.push({ title: $(el).text().trim(), url: $(el).attr('href') });
+                    }
+                });
+            }
+
+            return results.slice(0, 5);
         } catch (error) {
-            logger.error(`Search failed for ${sourceId}: ${error.message}`);
+            logger.error(`[Scraper] Search failed for ${sourceId}: ${error.message}`);
             return [];
         }
     }
@@ -65,118 +94,81 @@ export class ScraperEngine {
         }
     }
 
-    async searchWPManga(source, query) {
-        const searchUrl = `${source.url}/?s=${encodeURIComponent(query)}&post_type=wp-manga`;
-        const { data } = await axios.get(searchUrl, {
-            headers: { 'User-Agent': config.scraping.userAgent },
-            timeout: config.scraping.timeout
-        });
-        const $ = cheerio.load(data);
-        const results = [];
-
-        $('.c-tabs-item__content, .search-wrap .manga-item').each((i, el) => {
-            const title = $(el).find('h3 a, .post-title a').text().trim();
-            const url = $(el).find('h3 a, .post-title a').attr('href');
-            if (title && url) results.push({ title, url });
-        });
-
-        return results;
-    }
-
-    async searchMangaDex(query) {
-        const response = await axios.get(`https://api.mangadex.org/manga`, {
-            params: { title: query, limit: 5 }
-        });
-        return response.data.data.map(m => ({
-            title: m.attributes.title.en || Object.values(m.attributes.title)[0],
-            url: `https://mangadex.org/title/${m.id}`,
-            id: m.id
-        }));
-    }
-
-    async searchGeneric(source, query) {
-        // Simple generic search implementation
-        const searchUrl = `${source.url}/search?q=${encodeURIComponent(query)}`;
-        try {
-            const { data } = await axios.get(searchUrl, {
-                headers: { 'User-Agent': config.scraping.userAgent },
-                timeout: 10000
-            });
-            const $ = cheerio.load(data);
-            const results = [];
-            $('a').each((i, el) => {
-                const text = $(el).text().toLowerCase();
-                if (text.includes(query.toLowerCase())) {
-                    results.push({ title: $(el).text().trim(), url: $(el).attr('href') });
-                }
-            });
-            return results.slice(0, 5);
-        } catch (e) {
-            return [];
-        }
-    }
-
     async getMangaDetails(sourceId, mangaUrl) {
-        const source = this.sources.find(s => s.id === sourceId);
         try {
+            logger.info(`[Scraper] Getting details from: ${mangaUrl}`);
             const { data } = await axios.get(mangaUrl, {
-                headers: { 'User-Agent': config.scraping.userAgent }
+                headers: { 'User-Agent': config.scraping.userAgent },
+                timeout: 15000
             });
             const $ = cheerio.load(data);
 
-            const title = $('h1').text().trim();
-            const coverUrl = $('.summary_image img').attr('src') || $('.post-thumbnail img').attr('src');
-            const description = $('.summary__content, .manga-excerpt, .description-summary').text().trim();
+            const title = $('h1').text().trim() || $('.post-title h1').text().trim() || $('.entry-title').text().trim();
+            const coverUrl = $('.summary_image img').attr('src') || $('.post-thumbnail img').attr('src') || $('.thumb img').attr('src');
+            const description = $('.summary__content, .manga-excerpt, .description-summary, .entry-content').text().trim();
             
             const chapters = [];
-            if (source && source.type === 'wp-manga') {
-                $('.wp-manga-chapter a').each((i, el) => {
-                    const url = $(el).attr('href');
-                    const name = $(el).text().trim();
-                    const number = parseFloat(name.match(/\d+(\.\d+)?/)?.[0] || 0);
-                    if (url) chapters.push({ url, number, name });
-                });
-            } else {
+            // Common Selectors for Chapter Lists
+            $('.wp-manga-chapter a, .eph-num a, .chp-release-list a, .clist a').each((i, el) => {
+                const url = $(el).attr('href');
+                const name = $(el).text().trim();
+                const numberMatch = name.match(/(\d+(\.\d+)?)/);
+                const number = numberMatch ? parseFloat(numberMatch[1]) : 0;
+                if (url) chapters.push({ url, number, name });
+            });
+
+            // If no chapters found, try generic link search
+            if (chapters.length === 0) {
                 $('a').each((i, el) => {
-                    const text = $(el).text();
                     const href = $(el).attr('href');
-                    if (href && (text.toLowerCase().includes('chapter') || text.match(/فصل/))) {
-                        const number = parseFloat(text.match(/\d+(\.\d+)?/)?.[0] || 0);
-                        chapters.push({ url: href, number, name: text.trim() });
+                    const text = $(el).text().toLowerCase();
+                    if (href && (href.includes('chapter') || href.includes('فصل')) && !href.includes('search')) {
+                        const numberMatch = text.match(/(\d+(\.\d+)?)/);
+                        const number = numberMatch ? parseFloat(numberMatch[1]) : 0;
+                        chapters.push({ url: href, number, name: $(el).text().trim() });
                     }
                 });
             }
 
             return { 
-                title, 
-                coverUrl, 
+                title: title || "بدون عنوان", 
+                coverUrl: coverUrl || "", 
                 description: description || "لا يوجد وصف متاح.", 
                 chapters: chapters.sort((a, b) => b.number - a.number) 
             };
         } catch (error) {
-            logger.error(`Failed to get details from ${mangaUrl}: ${error.message}`);
+            logger.error(`[Scraper] Details failed for ${mangaUrl}: ${error.message}`);
             throw error;
         }
     }
 
     async parseChapterImages(sourceId, chapterUrl) {
         try {
+            logger.info(`[Scraper] Parsing images from: ${chapterUrl}`);
             const { data } = await axios.get(chapterUrl, {
-                headers: { 'User-Agent': config.scraping.userAgent }
+                headers: { 'User-Agent': config.scraping.userAgent },
+                timeout: 20000
             });
             const $ = cheerio.load(data);
             const images = [];
 
-            $('.reading-content img, #reader-images img, .page-break img').each((i, el) => {
+            // Targeted selectors for major Arabic and English sites
+            $('.reading-content img, #reader-images img, .page-break img, .vung-doc img, #chapter_imgs img, .rdminimal img').each((i, el) => {
                 const src = $(el).attr('src')?.trim() || $(el).attr('data-src')?.trim() || $(el).attr('data-lazy-src')?.trim();
-                if (src && !src.includes('logo') && !src.includes('banner')) {
-                    images.push(src.startsWith('http') ? src : 'https:' + src);
+                if (src && !src.includes('logo') && !src.includes('banner') && !src.includes('loader')) {
+                    let finalUrl = src.startsWith('http') ? src : 'https:' + src;
+                    // Fix for some sites that use relative protocol
+                    if (finalUrl.startsWith('https:https:')) finalUrl = finalUrl.replace('https:https:', 'https:');
+                    images.push(finalUrl);
                 }
             });
 
-            return [...new Set(images)]; // Remove duplicates
+            // Remove duplicates and filter empty
+            const uniqueImages = [...new Set(images.filter(img => img.length > 0))];
+            logger.info(`[Scraper] Found ${uniqueImages.length} images.`);
+            return uniqueImages;
         } catch (error) {
-            logger.error(`Failed to parse images from ${chapterUrl}: ${error.message}`);
+            logger.error(`[Scraper] Image parsing failed for ${chapterUrl}: ${error.message}`);
             return [];
         }
     }

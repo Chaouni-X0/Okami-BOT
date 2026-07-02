@@ -11,14 +11,16 @@ export class ChatService {
     }
 
     async handleMessage(fbId, message) {
-        const state = this.sessions.get(fbId) || { step: 'START' };
         const text = message.trim();
+        const lowerText = text.toLowerCase();
 
-        // Global commands
-        if (text.toLowerCase() === 'reset' || text === 'خروج') {
-            this.sessions.delete(fbId);
-            return "🔄 تم إعادة ضبط الجلسة. أرسل أي شيء للبدء من جديد.";
+        // Check for greeting or reset to restart the session
+        if (lowerText === 'مرحبا' || lowerText === 'أهلا' || lowerText === 'start' || lowerText === 'reset' || lowerText === 'خروج') {
+            this.sessions.set(fbId, { step: 'CHOOSING_ROLE' });
+            return "🐺 مرحباً بك في Okami Bot!\nكيف يمكنني مساعدتك اليوم؟\n\n1️⃣ وضع المطور (Developer Mode)\n2️⃣ وضع القارئ (Reader Mode)\n\nأرسل رقم اختيارك:";
         }
+
+        const state = this.sessions.get(fbId) || { step: 'START' };
 
         switch (state.step) {
             case 'START':
@@ -32,7 +34,7 @@ export class ChatService {
                 } else if (text === '2') {
                     const profile = await UserService.getProfile(fbId);
                     this.sessions.set(fbId, { step: 'START' });
-                    return `📖 أهلاً بك أيها القارئ!\n👤 ملفك الشخصي:\n⭐ المستوى: ${profile.level}\n🔥 الـ Streak: ${profile.streak}\n🏆 اللقب: ${profile.rank_title}\n💰 النقاط: ${profile.points}\n\nيمكنك متابعة القراءة لزيادة نقاطك! 🐺`;
+                    return `📖 أهلاً بك أيها القارئ!\n👤 ملفك الشخصي:\n⭐ المستوى: ${profile.level}\n🔥 الـ Streak: ${profile.streak}\n🏆 اللقب: ${profile.rank_title}\n💰 النقاط: ${profile.points}\n\nيمكنك متابعة القراءة لزيادة نقاطك! 🐺\n(أرسل "مرحبا" للعودة للقائمة الرئيسية)`;
                 }
                 return "❌ اختيار غير صحيح. يرجى اختيار 1 أو 2:";
 
@@ -58,16 +60,32 @@ export class ChatService {
                 }
                 return "❌ اختيار غير صحيح.";
 
+            case 'SELECTING_SOURCE':
+                const sourceIdx = parseInt(text) - 1;
+                if (sourceIdx >= 0 && sourceIdx < config.sources.length) {
+                    const selectedSource = config.sources[sourceIdx];
+                    this.sessions.set(fbId, { step: 'AWAITING_SEARCH_QUERY', sourceId: selectedSource.id });
+                    return `🔍 لقد اخترت ${selectedSource.name}.\nأرسل الآن اسم العمل للبحث فيه:`;
+                }
+                return "❌ رقم موقع غير صحيح.";
+
             case 'AWAITING_SEARCH_QUERY':
                 const query = text;
-                const results = await scraperEngine.searchAll(query);
+                const sourceId = state.sourceId;
+                let results = [];
+                if (sourceId) {
+                    results = await scraperEngine.search(sourceId, query);
+                } else {
+                    results = await scraperEngine.searchAll(query);
+                }
+
                 if (results.length === 0) {
-                    return "❌ لم يتم العثور على نتائج. حاول كتابة الاسم بشكل مختلف أو جرب 'reset' للبدء من جديد.";
+                    return "❌ لم يتم العثور على نتائج في هذا الموقع. حاول كتابة الاسم بشكل مختلف أو أرسل 'مرحبا' للبدء من جديد.";
                 }
                 this.sessions.set(fbId, { step: 'SELECTING_RESULT', results });
                 let resultMsg = "🔎 النتائج المتاحة:\n\n";
                 results.slice(0, 10).forEach((res, i) => {
-                    resultMsg += `${i + 1}️⃣ ${res.title} (${res.sourceName})\n`;
+                    resultMsg += `${i + 1}️⃣ ${res.title} (${res.sourceName || 'الموقع المختار'})\n`;
                 });
                 return resultMsg + "\n📌 أرسل الرقم فقط للاختيار:";
 
@@ -85,7 +103,7 @@ export class ChatService {
                         });
                         return chapterMsg + "\nأرسل رقم الفصل للنشر، أو أرسل 'all' للنشر التلقائي للفصول الجديدة مستقبلاً:";
                     } catch (e) {
-                        return "❌ حدث خطأ في جلب تفاصيل العمل.";
+                        return "❌ حدث خطأ في جلب تفاصيل العمل. تأكد من أن الموقع يعمل.";
                     }
                 }
                 return "❌ رقم غير صحيح.";
@@ -96,7 +114,6 @@ export class ChatService {
                 if (chIdx >= 0 && chIdx < mangaDetails.chapters.length) {
                     const chapter = mangaDetails.chapters[chIdx];
                     
-                    // Generate professional message
                     const postMessage = `╭━━━〔 🔥 فصل جديد 🔥 〕━━━╮\n📖 اسم العمل: ❪ ${mangaDetails.title} ❫\n📌 الفصل: ❪ ${chapter.number} ❫\n╰━━━━━━━━━━━━━━━╯\n\n📝 نبذة:\n${mangaDetails.description.substring(0, 200)}...\n\n📥 قراءة مباشرة:\n🔗 ${chapter.url}\n\n━━━━━━━━━━━━━━━\n🔥 لا تنسوا المتابعة ليصلكم كل جديد\n💬 شاركونا رأيكم 👇`;
 
                     await QueueSystem.addChapterToQueue({
@@ -109,13 +126,13 @@ export class ChatService {
                     });
 
                     this.sessions.set(fbId, { step: 'DEV_MENU' });
-                    return `🚀 جاري العمل على نشر الفصل ${chapter.number} من "${mangaDetails.title}"...\nسيتم إرسال تنبيه لك فور الانتهاء. 🐺🔥`;
+                    return `🚀 جاري العمل على جلب وتحميل صور الفصل ${chapter.number} من "${mangaDetails.title}"...\nسيتم إرسال تنبيه لك فور الانتهاء من النشر على فيسبوك. 🐺🔥`;
                 }
                 return "❌ رقم فصل غير صحيح.";
 
             default:
-                this.sessions.set(fbId, { step: 'START' });
-                return "🔄 أهلاً بك! أرسل أي شيء للبدء.";
+                this.sessions.set(fbId, { step: 'CHOOSING_ROLE' });
+                return "🐺 مرحباً بك! أرسل 'مرحبا' للبدء.";
         }
     }
 }
