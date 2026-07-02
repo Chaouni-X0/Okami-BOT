@@ -1,9 +1,13 @@
 import express from 'express';
 import { config } from './config/config.js';
-import { DialogueService } from './services/dialogue.service.js';
+import { ChatService } from './services/chat.service.js';
 import { FacebookPublisher } from './modules/publisher.js';
 import { QueueSystem } from './modules/queue.js';
+import { AutomationService } from './services/automation.service.js';
 import logger from './utils/logger.js';
+
+const chatService = new ChatService();
+const automationService = new AutomationService();
 
 const app = express();
 app.use(express.json());
@@ -58,9 +62,13 @@ app.post('/webhook', (req, res) => {
                                 
                                 logger.info(`Processing message from ${sender_id}: ${text}`);
                                 
-                                const responseText = await DialogueService.handleMessage(sender_id, text);
+                                const responseText = await chatService.handleMessage(sender_id, text);
                                 if (responseText) {
-                                    await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                                    if (typeof responseText === 'string') {
+                                        await FacebookPublisher.sendDirectMessage(sender_id, { text: responseText });
+                                    } else {
+                                        await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                                    }
                                 }
                             } catch (error) {
                                 logger.error(`Error processing webhook event: ${error.message}`);
@@ -79,13 +87,10 @@ const PORT = config.port;
 app.listen(PORT, async () => {
     logger.info(`Okami Bot API running on port ${PORT}`);
     
-    // Resume saved queue if exists
+    // Initialize Automation Service
     try {
-        if (QueueSystem && typeof QueueSystem.resumeQueue === 'function') {
-            await QueueSystem.resumeQueue();
-            logger.info('Persistent queue resumed.');
-        }
+        await automationService.init();
     } catch (e) {
-        logger.error(`Failed to resume queue: ${e.message}`);
+        logger.error(`Failed to init automation: ${e.message}`);
     }
 });

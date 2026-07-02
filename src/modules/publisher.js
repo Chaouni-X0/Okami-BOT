@@ -1,4 +1,3 @@
-
 import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
@@ -13,10 +12,18 @@ const BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}/${PAGE_ID}`;
 
 export class FacebookPublisher {
     
-    /**
-     * Sends a direct message to a user.
-     * Uses the centralized sendMessage service logic.
-     */
+    static async validateToken() {
+        try {
+            const response = await axios.get(`https://graph.facebook.com/me?access_token=${PAGE_ACCESS_TOKEN}`);
+            logger.info(`[Publisher] Token validated: ${response.data.name}`);
+            return true;
+        } catch (error) {
+            const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+            logger.error(`[Publisher] Token validation failed: ${errorMsg}`);
+            return false;
+        }
+    }
+
     static async sendDirectMessage(psid, messagePayload) {
         try {
             const result = await sendMessage(psid, messagePayload);
@@ -28,15 +35,23 @@ export class FacebookPublisher {
         }
     }
 
-    /**
-     * Publishes a chapter with multiple images.
-     */
     static async publishChapter(imagePaths, message) {
+        logger.info(`[Publisher] Starting to publish chapter with ${imagePaths.length} images`);
         try {
             const photoIds = [];
-            for (const imgPath of imagePaths) {
-                const photoId = await this.uploadPhoto(imgPath);
-                photoIds.push({ media_fbid: photoId });
+            for (let i = 0; i < imagePaths.length; i++) {
+                const imgPath = imagePaths[i];
+                try {
+                    const photoId = await this.uploadPhoto(imgPath);
+                    photoIds.push({ media_fbid: photoId });
+                    logger.info(`[Publisher] Uploaded photo ${i+1}/${imagePaths.length}: ${photoId}`);
+                } catch (uploadError) {
+                    logger.warn(`[Publisher] Failed to upload photo ${i+1}, skipping: ${uploadError.message}`);
+                }
+            }
+
+            if (photoIds.length === 0) {
+                throw new Error("No photos were successfully uploaded.");
             }
 
             const url = `${BASE_URL}/feed`;
@@ -52,17 +67,19 @@ export class FacebookPublisher {
         } catch (error) {
             const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
             logger.error(`[Publisher] Chapter publishing error: ${errorMsg}`);
-            throw error;
+            throw new Error(`Facebook Publishing Failed: ${errorMsg}`);
         }
     }
 
-    /**
-     * Uploads a photo to Facebook as unpublished.
-     */
     static async uploadPhoto(filePath) {
         const url = `${BASE_URL}/photos`;
         const form = new FormData();
-        form.append('source', fs.createReadStream(filePath));
+        if (filePath.startsWith('http')) {
+            const response = await axios.get(filePath, { responseType: 'stream' });
+            form.append('source', response.data);
+        } else {
+            form.append('source', fs.createReadStream(filePath));
+        }
         form.append('published', 'false');
         form.append('access_token', PAGE_ACCESS_TOKEN);
 
@@ -73,38 +90,31 @@ export class FacebookPublisher {
             return response.data.id;
         } catch (error) {
             const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
-            logger.error(`[Publisher] Photo upload error: ${errorMsg}`);
-            throw error;
+            throw new Error(`Photo upload error: ${errorMsg}`);
         }
     }
 
-    /**
-     * Publishes an aggregation post.
-     */
-    static async publishAggregation(mangaData, chapters) {
-        let message = `🐺 المنشور التجميعي لمانهوا: ${mangaData.title}\n\n`;
-        
-        chapters.forEach(c => {
-            message += `${mangaData.title} - الفصل ${c.chapter_number}\n`;
-            message += `https://facebook.com/${c.fb_post_id}\n\n`;
-        });
-
-        message += `#OkamiBot #Manga #Aggregation`;
-
-        const url = `${BASE_URL}/feed`;
-        const payload = {
-            message: message,
-            access_token: PAGE_ACCESS_TOKEN
-        };
-
+    static async publishCustomPost(message, imageUrl = null) {
         try {
+            const url = imageUrl ? `${BASE_URL}/photos` : `${BASE_URL}/feed`;
+            const payload = {
+                message: message,
+                access_token: PAGE_ACCESS_TOKEN
+            };
+            
+            if (imageUrl) {
+                payload.url = imageUrl;
+            }
+
             const response = await axios.post(url, payload);
-            logger.info(`[Publisher] Aggregation post published: ${response.data.id}`);
+            logger.info(`[Publisher] Custom post published: ${response.data.id}`);
             return response.data.id;
         } catch (error) {
             const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
-            logger.error(`[Publisher] Aggregation error: ${errorMsg}`);
+            logger.error(`[Publisher] Custom post error: ${errorMsg}`);
             throw error;
         }
     }
 }
+
+export default FacebookPublisher;

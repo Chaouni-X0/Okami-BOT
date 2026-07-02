@@ -26,9 +26,13 @@ export const config = {
         timeout: 30000,
     },
     sources: [
-        { id: 'mangaarab', name: 'Manga Arab', url: 'https://mangaarab.com' },
-        { id: 'mangalek', name: 'Manga Lek', url: 'https://mangalek.com' },
-        { id: 'mangaswat', name: 'Manga Swat', url: 'https://swatmanga.me' }
+        { id: 'mangaarab', name: 'مانجا عرب', url: 'https://mangaarab.com', type: 'wp-manga' },
+        { id: 'mangalek', name: 'مانجا ليك', url: 'https://mangalek.com', type: 'wp-manga' },
+        { id: 'mangaswat', name: 'مانجا سوات', url: 'https://swatmanga.me', type: 'wp-manga' },
+        { id: 'asurascans', name: 'Asura Scans', url: 'https://asuracomics.gg', type: 'custom' },
+        { id: 'reaperscans', name: 'Reaper Scans', url: 'https://reaperscans.com', type: 'custom' },
+        { id: 'mangadex', name: 'MangaDex', url: 'https://mangadex.org', type: 'api' },
+        { id: 'mangakakalot', name: 'MangaKakalot', url: 'https://mangakakalot.com', type: 'custom' }
     ],
     settings: {
         maxImageHeight: 1500,
