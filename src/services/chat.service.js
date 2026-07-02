@@ -4,6 +4,7 @@ import { UserService } from './user.service.js';
 import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
 import { FacebookPublisher } from '../modules/publisher.js';
+import { sendMessage } from './messenger.js';
 
 export class ChatService {
     constructor() {
@@ -15,124 +16,153 @@ export class ChatService {
         const lowerText = text.toLowerCase();
 
         // Check for greeting or reset to restart the session
-        if (lowerText === 'مرحبا' || lowerText === 'أهلا' || lowerText === 'start' || lowerText === 'reset' || lowerText === 'خروج') {
+        if (['مرحبا', 'أهلا', 'start', 'reset', 'خروج', 'أهلا بك'].includes(lowerText)) {
             this.sessions.set(fbId, { step: 'CHOOSING_ROLE' });
-            return "🐺 مرحباً بك في Okami Bot!\nكيف يمكنني مساعدتك اليوم؟\n\n1️⃣ وضع المطور (Developer Mode)\n2️⃣ وضع القارئ (Reader Mode)\n\nأرسل رقم اختيارك:";
+            const welcome = "🐺 مرحباً بك في Okami Bot!\nكيف يمكنني مساعدتك اليوم؟\n\n1️⃣ وضع المطور (Developer Mode)\n2️⃣ وضع القارئ (Reader Mode)\n\nأرسل رقم اختيارك:";
+            await sendMessage(fbId, { text: welcome });
+            return;
         }
 
         const state = this.sessions.get(fbId) || { step: 'START' };
 
-        switch (state.step) {
-            case 'START':
-                this.sessions.set(fbId, { step: 'CHOOSING_ROLE' });
-                return "🐺 مرحباً بك في Okami Bot!\nكيف يمكنني مساعدتك اليوم؟\n\n1️⃣ وضع المطور (Developer Mode)\n2️⃣ وضع القارئ (Reader Mode)\n\nأرسل رقم اختيارك:";
+        try {
+            switch (state.step) {
+                case 'START':
+                    this.sessions.set(fbId, { step: 'CHOOSING_ROLE' });
+                    await sendMessage(fbId, { text: "🐺 مرحباً بك في Okami Bot!\nكيف يمكنني مساعدتك اليوم؟\n\n1️⃣ وضع المطور (Developer Mode)\n2️⃣ وضع القارئ (Reader Mode)\n\nأرسل رقم اختيارك:" });
+                    break;
 
-            case 'CHOOSING_ROLE':
-                if (text === '1') {
-                    this.sessions.set(fbId, { step: 'AWAITING_PASSWORD' });
-                    return "🔐 يرجى إدخال مفتاح التنشيط الخاص بالمطور:";
-                } else if (text === '2') {
-                    const profile = await UserService.getProfile(fbId);
-                    this.sessions.set(fbId, { step: 'START' });
-                    return `📖 أهلاً بك أيها القارئ!\n👤 ملفك الشخصي:\n⭐ المستوى: ${profile.level}\n🔥 الـ Streak: ${profile.streak}\n🏆 اللقب: ${profile.rank_title}\n💰 النقاط: ${profile.points}\n\nيمكنك متابعة القراءة لزيادة نقاطك! 🐺\n(أرسل "مرحبا" للعودة للقائمة الرئيسية)`;
-                }
-                return "❌ اختيار غير صحيح. يرجى اختيار 1 أو 2:";
-
-            case 'AWAITING_PASSWORD':
-                if (text === config.admin.activationKey) {
-                    this.sessions.set(fbId, { step: 'DEV_MENU' });
-                    return "✅ تم التحقق بنجاح! مرحباً بك أيها المطور.\n\n1️⃣ البحث في جميع المواقع 🔍\n2️⃣ اختيار موقع معين 🌐\n3️⃣ التحقق من حالة النشر 📊\n\nأرسل رقم الخيار:";
-                }
-                return "❌ مفتاح التنشيط خاطئ. حاول مرة أخرى:";
-
-            case 'DEV_MENU':
-                if (text === '1') {
-                    this.sessions.set(fbId, { step: 'AWAITING_SEARCH_QUERY' });
-                    return "🔍 أرسل اسم المانهوا/المانجا التي تبحث عنها:";
-                } else if (text === '2') {
-                    this.sessions.set(fbId, { step: 'SELECTING_SOURCE' });
-                    let menu = "🌐 اختر الموقع:\n";
-                    config.sources.forEach((s, i) => menu += `${i + 1}. ${s.name}\n`);
-                    return menu + "\nأرسل رقم الموقع:";
-                } else if (text === '3') {
-                    const isValid = await FacebookPublisher.validateToken();
-                    return isValid ? "✅ نظام النشر يعمل بشكل صحيح والتوكن صالح." : "❌ هناك مشكلة في توكن الفيسبوك. يرجى مراجعة الـ Logs.";
-                }
-                return "❌ اختيار غير صحيح.";
-
-            case 'SELECTING_SOURCE':
-                const sourceIdx = parseInt(text) - 1;
-                if (sourceIdx >= 0 && sourceIdx < config.sources.length) {
-                    const selectedSource = config.sources[sourceIdx];
-                    this.sessions.set(fbId, { step: 'AWAITING_SEARCH_QUERY', sourceId: selectedSource.id });
-                    return `🔍 لقد اخترت ${selectedSource.name}.\nأرسل الآن اسم العمل للبحث فيه:`;
-                }
-                return "❌ رقم موقع غير صحيح.";
-
-            case 'AWAITING_SEARCH_QUERY':
-                const query = text;
-                const sourceId = state.sourceId;
-                let results = [];
-                if (sourceId) {
-                    results = await scraperEngine.search(sourceId, query);
-                } else {
-                    results = await scraperEngine.searchAll(query);
-                }
-
-                if (results.length === 0) {
-                    return "❌ لم يتم العثور على نتائج في هذا الموقع. حاول كتابة الاسم بشكل مختلف أو أرسل 'مرحبا' للبدء من جديد.";
-                }
-                this.sessions.set(fbId, { step: 'SELECTING_RESULT', results });
-                let resultMsg = "🔎 النتائج المتاحة:\n\n";
-                results.slice(0, 10).forEach((res, i) => {
-                    resultMsg += `${i + 1}️⃣ ${res.title} (${res.sourceName || 'الموقع المختار'})\n`;
-                });
-                return resultMsg + "\n📌 أرسل الرقم فقط للاختيار:";
-
-            case 'SELECTING_RESULT':
-                const idx = parseInt(text) - 1;
-                const searchResults = state.results;
-                if (idx >= 0 && idx < searchResults.length) {
-                    const selected = searchResults[idx];
-                    try {
-                        const details = await scraperEngine.getMangaDetails(selected.sourceId, selected.url);
-                        this.sessions.set(fbId, { step: 'SELECTING_CHAPTER', details, sourceId: selected.sourceId });
-                        let chapterMsg = `📖 ${details.title}\n✅ تم العثور على ${details.chapters.length} فصل.\n\nأحدث الفصول:\n`;
-                        details.chapters.slice(0, 5).forEach((ch, i) => {
-                            chapterMsg += `${i + 1}. فصل ${ch.number} - ${ch.name}\n`;
-                        });
-                        return chapterMsg + "\nأرسل رقم الفصل للنشر، أو أرسل 'all' للنشر التلقائي للفصول الجديدة مستقبلاً:";
-                    } catch (e) {
-                        return "❌ حدث خطأ في جلب تفاصيل العمل. تأكد من أن الموقع يعمل.";
+                case 'CHOOSING_ROLE':
+                    if (text === '1') {
+                        this.sessions.set(fbId, { step: 'AWAITING_PASSWORD' });
+                        await sendMessage(fbId, { text: "🔐 يرجى إدخال مفتاح التنشيط الخاص بالمطور:" });
+                    } else if (text === '2') {
+                        const profile = await UserService.getProfile(fbId);
+                        this.sessions.set(fbId, { step: 'START' });
+                        const profileMsg = `📖 أهلاً بك أيها القارئ!\n👤 ملفك الشخصي:\n⭐ المستوى: ${profile.level}\n🔥 الـ Streak: ${profile.streak}\n🏆 اللقب: ${profile.rank_title}\n💰 النقاط: ${profile.points}\n\nيمكنك متابعة القراءة لزيادة نقاطك! 🐺\n(أرسل "مرحبا" للعودة للقائمة الرئيسية)`;
+                        await sendMessage(fbId, { text: profileMsg });
+                    } else {
+                        await sendMessage(fbId, { text: "❌ اختيار غير صحيح. يرجى اختيار 1 أو 2:" });
                     }
-                }
-                return "❌ رقم غير صحيح.";
+                    break;
 
-            case 'SELECTING_CHAPTER':
-                const chIdx = parseInt(text) - 1;
-                const mangaDetails = state.details;
-                if (chIdx >= 0 && chIdx < mangaDetails.chapters.length) {
-                    const chapter = mangaDetails.chapters[chIdx];
+                case 'AWAITING_PASSWORD':
+                    if (text === config.admin.activationKey) {
+                        this.sessions.set(fbId, { step: 'DEV_MENU' });
+                        const devMenu = "✅ تم التحقق بنجاح! مرحباً بك أيها المطور.\n\n1️⃣ البحث في جميع المواقع 🔍\n2️⃣ اختيار موقع معين 🌐\n3️⃣ التحقق من حالة النشر 📊\n\nأرسل رقم الخيار:";
+                        await sendMessage(fbId, { text: devMenu });
+                    } else {
+                        await sendMessage(fbId, { text: "❌ مفتاح التنشيط خاطئ. حاول مرة أخرى:" });
+                    }
+                    break;
+
+                case 'DEV_MENU':
+                    if (text === '1') {
+                        this.sessions.set(fbId, { step: 'AWAITING_SEARCH_QUERY' });
+                        await sendMessage(fbId, { text: "🔍 أرسل اسم المانهوا/المانجا التي تبحث عنها:" });
+                    } else if (text === '2') {
+                        this.sessions.set(fbId, { step: 'SELECTING_SOURCE' });
+                        let menu = "🌐 اختر الموقع:\n";
+                        config.sources.forEach((s, i) => menu += `${i + 1}. ${s.name}\n`);
+                        await sendMessage(fbId, { text: menu + "\nأرسل رقم الموقع:" });
+                    } else if (text === '3') {
+                        const isValid = await FacebookPublisher.validateToken();
+                        const statusMsg = isValid ? "✅ نظام النشر يعمل بشكل صحيح والتوكن صالح." : "❌ هناك مشكلة في توكن الفيسبوك. يرجى مراجعة الـ Logs.";
+                        await sendMessage(fbId, { text: statusMsg });
+                    } else {
+                        await sendMessage(fbId, { text: "❌ اختيار غير صحيح." });
+                    }
+                    break;
+
+                case 'SELECTING_SOURCE':
+                    const sourceIdx = parseInt(text) - 1;
+                    if (sourceIdx >= 0 && sourceIdx < config.sources.length) {
+                        const selectedSource = config.sources[sourceIdx];
+                        this.sessions.set(fbId, { step: 'AWAITING_SEARCH_QUERY', sourceId: selectedSource.id });
+                        await sendMessage(fbId, { text: `🔍 لقد اخترت ${selectedSource.name}.\nأرسل الآن اسم العمل للبحث فيه:` });
+                    } else {
+                        await sendMessage(fbId, { text: "❌ رقم موقع غير صحيح." });
+                    }
+                    break;
+
+                case 'AWAITING_SEARCH_QUERY':
+                    const query = text;
+                    const sourceId = state.sourceId;
+                    await sendMessage(fbId, { text: `⏳ جاري البحث عن "${query}"...` });
                     
-                    const postMessage = `╭━━━〔 🔥 فصل جديد 🔥 〕━━━╮\n📖 اسم العمل: ❪ ${mangaDetails.title} ❫\n📌 الفصل: ❪ ${chapter.number} ❫\n╰━━━━━━━━━━━━━━━╯\n\n📝 نبذة:\n${mangaDetails.description.substring(0, 200)}...\n\n📥 قراءة مباشرة:\n🔗 ${chapter.url}\n\n━━━━━━━━━━━━━━━\n🔥 لا تنسوا المتابعة ليصلكم كل جديد\n💬 شاركونا رأيكم 👇`;
+                    let results = [];
+                    if (sourceId) {
+                        results = await scraperEngine.search(sourceId, query);
+                    } else {
+                        results = await scraperEngine.searchAll(query);
+                    }
 
-                    await QueueSystem.addChapterToQueue({
-                        mangaTitle: mangaDetails.title,
-                        chapterName: chapter.name,
-                        chapterUrl: chapter.url,
-                        sourceKey: state.sourceId,
-                        adminFbId: fbId,
-                        customMessage: postMessage
+                    if (!results || results.length === 0) {
+                        await sendMessage(fbId, { text: "❌ لم يتم العثور على نتائج. حاول كتابة الاسم بشكل مختلف أو أرسل 'مرحبا' للبدء من جديد." });
+                        return;
+                    }
+                    this.sessions.set(fbId, { step: 'SELECTING_RESULT', results });
+                    let resultMsg = `🔎 وجدت ${results.length} نتيجة:\n\n`;
+                    results.slice(0, 10).forEach((res, i) => {
+                        resultMsg += `${i + 1}️⃣ ${res.title} (${res.sourceName || 'الموقع المختار'})\n`;
                     });
+                    await sendMessage(fbId, { text: resultMsg + "\n📌 أرسل الرقم للاختيار:" });
+                    break;
 
-                    this.sessions.set(fbId, { step: 'DEV_MENU' });
-                    return `🚀 جاري العمل على جلب وتحميل صور الفصل ${chapter.number} من "${mangaDetails.title}"...\nسيتم إرسال تنبيه لك فور الانتهاء من النشر على فيسبوك. 🐺🔥`;
-                }
-                return "❌ رقم فصل غير صحيح.";
+                case 'SELECTING_RESULT':
+                    const idx = parseInt(text) - 1;
+                    const searchResults = state.results;
+                    if (idx >= 0 && idx < searchResults.length) {
+                        const selected = searchResults[idx];
+                        await sendMessage(fbId, { text: `⏳ جاري جلب فصول "${selected.title}"...` });
+                        try {
+                            const details = await scraperEngine.getMangaDetails(selected.sourceId, selected.url);
+                            this.sessions.set(fbId, { step: 'SELECTING_CHAPTER', details, sourceId: selected.sourceId });
+                            let chapterMsg = `📖 ${details.title}\n✅ تم العثور على ${details.chapters.length} فصل.\n\nأحدث الفصول:\n`;
+                            details.chapters.slice(0, 10).forEach((ch, i) => {
+                                chapterMsg += `${i + 1}. ${ch.name}\n`;
+                            });
+                            await sendMessage(fbId, { text: chapterMsg + "\nأرسل رقم الفصل للنشر:" });
+                        } catch (e) {
+                            await sendMessage(fbId, { text: "❌ حدث خطأ في جلب تفاصيل العمل. تأكد من أن الموقع يعمل." });
+                        }
+                    } else {
+                        await sendMessage(fbId, { text: "❌ رقم غير صحيح." });
+                    }
+                    break;
 
-            default:
-                this.sessions.set(fbId, { step: 'CHOOSING_ROLE' });
-                return "🐺 مرحباً بك! أرسل 'مرحبا' للبدء.";
+                case 'SELECTING_CHAPTER':
+                    const chIdx = parseInt(text) - 1;
+                    const mangaDetails = state.details;
+                    if (chIdx >= 0 && chIdx < mangaDetails.chapters.length) {
+                        const chapter = mangaDetails.chapters[chIdx];
+                        
+                        const postMessage = `╭━━━〔 🔥 فصل جديد 🔥 〕━━━╮\n📖 اسم العمل: ❪ ${mangaDetails.title} ❫\n📌 الفصل: ❪ ${chapter.name} ❫\n╰━━━━━━━━━━━━━━━╯\n\n📝 نبذة:\n${mangaDetails.description ? mangaDetails.description.substring(0, 200) + '...' : 'لا يوجد وصف متاح.'}\n\n📥 قراءة مباشرة:\n🔗 ${chapter.url}\n\n━━━━━━━━━━━━━━━\n🔥 لا تنسوا المتابعة ليصلكم كل جديد\n💬 شاركونا رأيكم 👇`;
+
+                        await sendMessage(fbId, { text: `🚀 جاري العمل على جلب وتحميل صور "${chapter.name}" من "${mangaDetails.title}"...\nسيتم إرسال تنبيه لك فور الانتهاء من النشر على فيسبوك. 🐺🔥` });
+
+                        QueueSystem.addChapterToQueue({
+                            mangaTitle: mangaDetails.title,
+                            chapterName: chapter.name,
+                            chapterUrl: chapter.url,
+                            sourceKey: state.sourceId,
+                            adminFbId: fbId,
+                            customMessage: postMessage
+                        });
+
+                        this.sessions.set(fbId, { step: 'DEV_MENU' });
+                    } else {
+                        await sendMessage(fbId, { text: "❌ رقم فصل غير صحيح." });
+                    }
+                    break;
+
+                default:
+                    this.sessions.set(fbId, { step: 'CHOOSING_ROLE' });
+                    await sendMessage(fbId, { text: "🐺 مرحباً بك! أرسل 'مرحبا' للبدء." });
+            }
+        } catch (error) {
+            logger.error(`[ChatService] Error handling message: ${error.message}`);
+            await sendMessage(fbId, { text: "⚠️ حدث خطأ داخلي. يرجى المحاولة مرة أخرى بإرسال 'مرحبا'." });
         }
     }
 }

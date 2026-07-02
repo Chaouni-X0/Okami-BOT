@@ -5,8 +5,13 @@ export class ScraperEngine {
     async searchAll(query) {
         try {
             logger.info(`[Scraper] Searching all sources for: ${query} using Python Engine`);
-            const results = await PythonBridge.search(query);
-            return results.map(r => ({
+            const data = await PythonBridge.search(query);
+            
+            if (data.status === 'error') {
+                throw new Error(data.message);
+            }
+
+            return (data.results || []).map(r => ({
                 ...r,
                 sourceId: r.source,
                 sourceName: r.source
@@ -20,8 +25,17 @@ export class ScraperEngine {
     async search(sourceId, query) {
         try {
             logger.info(`[Scraper] Searching ${sourceId} for: ${query}`);
-            const results = await PythonBridge.search(query);
-            return results.filter(r => r.source === sourceId);
+            const data = await PythonBridge.search(query);
+
+            if (data.status === 'error') {
+                throw new Error(data.message);
+            }
+
+            return (data.results || []).filter(r => r.source === sourceId).map(r => ({
+                ...r,
+                sourceId: r.source,
+                sourceName: r.source
+            }));
         } catch (error) {
             logger.error(`[Scraper] Search failed for ${sourceId}: ${error.message}`);
             return [];
@@ -32,11 +46,16 @@ export class ScraperEngine {
         try {
             logger.info(`[Scraper] Getting details from: ${mangaUrl}`);
             const data = await PythonBridge.getDetails(sourceId, mangaUrl);
+
+            if (data.status === 'error') {
+                throw new Error(data.message);
+            }
+
             return {
                 title: data.info.title,
                 coverUrl: data.info.cover,
                 description: data.info.description,
-                chapters: data.chapters.map(ch => ({
+                chapters: (data.chapters || []).map(ch => ({
                     ...ch,
                     number: parseFloat(ch.name.match(/(\d+(\.\d+)?)/)?.[1] || 0)
                 }))
@@ -51,6 +70,11 @@ export class ScraperEngine {
         try {
             logger.info(`[Scraper] Downloading images via Python for: ${chapterUrl}`);
             const data = await PythonBridge.downloadChapter(sourceId, mangaTitle, chapterName, chapterUrl);
+
+            if (data.status === 'error') {
+                throw new Error(data.message);
+            }
+
             return data.images || [];
         } catch (error) {
             logger.error(`[Scraper] Image download failed for ${chapterUrl}: ${error.message}`);

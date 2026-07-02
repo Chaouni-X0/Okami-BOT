@@ -2,61 +2,65 @@ import asyncio
 import sys
 import json
 import argparse
+import os
+
+# Add the current directory to path to ensure imports work correctly
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from core.manager import ScraperManager
 from scrapers.wp_manga_scraper import WPMangaScraper
 from scrapers.mangadex_scraper import MangaDexScraper
 from scrapers.gmanga_scraper import GMangaScraper
 from utils.image_processor import ImageProcessor
-from config.settings import CONFIG
 
-async def run_search(query):
+async def get_manager():
     scrapers = [
         WPMangaScraper("MangaArab", "https://mangaarab.com"),
         WPMangaScraper("Asura", "https://asuratoon.com"),
         WPMangaScraper("TeamX", "https://teamx.org"),
+        WPMangaScraper("MangaLek", "https://mangalek.com"),
+        WPMangaScraper("MangaSwat", "https://swatmanga.me"),
+        WPMangaScraper("MoonManga", "https://moonmanga.com"),
         MangaDexScraper(),
         GMangaScraper()
     ]
-    manager = ScraperManager(scrapers)
+    return ScraperManager(scrapers)
+
+async def run_search(query):
+    manager = await get_manager()
     try:
+        # Clean query
+        query = query.strip()
         results = await manager.search_all(query)
-        return results
+        return {"status": "success", "results": results}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
     finally:
         await manager.close_all()
 
 async def run_details(source, url):
-    scrapers = [
-        WPMangaScraper("MangaArab", "https://mangaarab.com"),
-        WPMangaScraper("Asura", "https://asuratoon.com"),
-        WPMangaScraper("TeamX", "https://teamx.org"),
-        MangaDexScraper(),
-        GMangaScraper()
-    ]
-    manager = ScraperManager(scrapers)
+    manager = await get_manager()
     try:
         info = await manager.get_manga_info(source, url)
         chapters = await manager.get_chapters(source, url)
-        return {"info": info, "chapters": chapters}
+        return {"status": "success", "info": info, "chapters": chapters}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
     finally:
         await manager.close_all()
 
 async def run_download(source, manga_title, chapter_name, chapter_url):
-    scrapers = [
-        WPMangaScraper("MangaArab", "https://mangaarab.com"),
-        WPMangaScraper("Asura", "https://asuratoon.com"),
-        WPMangaScraper("TeamX", "https://teamx.org"),
-        MangaDexScraper(),
-        GMangaScraper()
-    ]
-    manager = ScraperManager(scrapers)
+    manager = await get_manager()
     processor = ImageProcessor(temp_dir="../data/temp")
     try:
         images = await manager.get_chapter_images(source, chapter_url)
         if not images:
-            return {"error": "No images found"}
+            return {"status": "error", "message": "No images found"}
         
         paths = await processor.process_chapter(manga_title, chapter_name, images)
-        return {"images": paths}
+        return {"status": "success", "images": paths}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
     finally:
         await manager.close_all()
 
@@ -72,11 +76,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     loop = asyncio.get_event_loop()
-    if args.action == "search":
-        res = loop.run_until_complete(run_search(args.query))
-    elif args.action == "details":
-        res = loop.run_until_complete(run_details(args.source, args.url))
-    elif args.action == "download":
-        res = loop.run_until_complete(run_download(args.source, args.title, args.chapter, args.url))
+    try:
+        if args.action == "search":
+            res = loop.run_until_complete(run_search(args.query))
+        elif args.action == "details":
+            res = loop.run_until_complete(run_details(args.source, args.url))
+        elif args.action == "download":
+            res = loop.run_until_complete(run_download(args.source, args.title, args.chapter, args.url))
+        else:
+            res = {"status": "error", "message": "Invalid action"}
+    except Exception as e:
+        res = {"status": "error", "message": f"Global error: {str(e)}"}
     
+    # Ensure ONLY the JSON is printed to stdout
     print(json.dumps(res))
