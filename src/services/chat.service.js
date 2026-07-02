@@ -9,6 +9,7 @@ import { sendMessage } from './messenger.js';
 export class ChatService {
     constructor() {
         this.sessions = new Map(); // fbId -> { step, data }
+        this.searchTimeout = 30000; // 30 second timeout for searches
     }
 
     async handleMessage(fbId, message) {
@@ -66,9 +67,14 @@ export class ChatService {
                         config.sources.forEach((s, i) => menu += `${i + 1}. ${s.name}\n`);
                         await sendMessage(fbId, { text: menu + "\nأرسل رقم الموقع:" });
                     } else if (text === '3') {
-                        const isValid = await FacebookPublisher.validateToken();
-                        const statusMsg = isValid ? "✅ نظام النشر يعمل بشكل صحيح والتوكن صالح." : "❌ هناك مشكلة في توكن الفيسبوك. يرجى مراجعة الـ Logs.";
-                        await sendMessage(fbId, { text: statusMsg });
+                        try {
+                            const isValid = await FacebookPublisher.validateToken();
+                            const statusMsg = isValid ? "✅ نظام النشر يعمل بشكل صحيح والتوكن صالح." : "❌ هناك مشكلة في توكن الفيسبوك. يرجى مراجعة الـ Logs.";
+                            await sendMessage(fbId, { text: statusMsg });
+                        } catch (e) {
+                            logger.error(`Token validation error: ${e.message}`);
+                            await sendMessage(fbId, { text: "❌ خطأ في التحقق من التوكن. تحقق من الـ Logs." });
+                        }
                     } else {
                         await sendMessage(fbId, { text: "❌ اختيار غير صحيح." });
                     }
@@ -88,25 +94,49 @@ export class ChatService {
                 case 'AWAITING_SEARCH_QUERY':
                     const query = text;
                     const sourceId = state.sourceId;
-                    await sendMessage(fbId, { text: `⏳ جاري البحث عن "${query}"...` });
                     
-                    let results = [];
-                    if (sourceId) {
-                        results = await scraperEngine.search(sourceId, query);
-                    } else {
-                        results = await scraperEngine.searchAll(query);
+                    if (!query || query.trim().length === 0) {
+                        await sendMessage(fbId, { text: "❌ يرجى إدخال اسم صحيح للبحث." });
+                        break;
                     }
 
-                    if (!results || results.length === 0) {
-                        await sendMessage(fbId, { text: "❌ لم يتم العثور على نتائج. حاول كتابة الاسم بشكل مختلف أو أرسل 'مرحبا' للبدء من جديد." });
-                        return;
+                    await sendMessage(fbId, { text: `⏳ جاري البحث عن "${query}"...\n⏳ قد يستغرق هذا بعض الوقت...` });
+                    
+                    try {
+                        let results = [];
+                        
+                        // Add timeout for search operation
+                        const searchPromise = sourceId 
+                            ? scraperEngine.search(sourceId, query)
+                            : scraperEngine.searchAll(query);
+                        
+                        const timeoutPromise = new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Search timeout')), this.searchTimeout)
+                        );
+                        
+                        results = await Promise.race([searchPromise, timeoutPromise]);
+
+                        if (!results || results.length === 0) {
+                            await sendMessage(fbId, { text: "❌ لم يتم العثور على نتائج. حاول كتابة الاسم بشكل مختلف أو أرسل 'مرحبا' للبدء من جديد." });
+                            this.sessions.set(fbId, { step: 'DEV_MENU' });
+                            return;
+                        }
+
+                        this.sessions.set(fbId, { step: 'SELECTING_RESULT', results });
+                        let resultMsg = `🔎 وجدت ${results.length} نتيجة:\n\n`;
+                        results.slice(0, 10).forEach((res, i) => {
+                            resultMsg += `${i + 1}️⃣ ${res.title} (${res.sourceName || 'الموقع المختار'})\n`;
+                        });
+                        await sendMessage(fbId, { text: resultMsg + "\n📌 أرسل الرقم للاختيار:" });
+                    } catch (error) {
+                        logger.error(`Search error: ${error.message}`);
+                        if (error.message === 'Search timeout') {
+                            await sendMessage(fbId, { text: "⏱️ انتهت مهلة البحث. يرجى المحاولة مرة أخرى أو اختيار موقع محدد." });
+                        } else {
+                            await sendMessage(fbId, { text: `❌ حدث خطأ في البحث: ${error.message}\nيرجى المحاولة مرة أخرى.` });
+                        }
+                        this.sessions.set(fbId, { step: 'DEV_MENU' });
                     }
-                    this.sessions.set(fbId, { step: 'SELECTING_RESULT', results });
-                    let resultMsg = `🔎 وجدت ${results.length} نتيجة:\n\n`;
-                    results.slice(0, 10).forEach((res, i) => {
-                        resultMsg += `${i + 1}️⃣ ${res.title} (${res.sourceName || 'الموقع المختار'})\n`;
-                    });
-                    await sendMessage(fbId, { text: resultMsg + "\n📌 أرسل الرقم للاختيار:" });
                     break;
 
                 case 'SELECTING_RESULT':
@@ -124,7 +154,9 @@ export class ChatService {
                             });
                             await sendMessage(fbId, { text: chapterMsg + "\nأرسل رقم الفصل للنشر:" });
                         } catch (e) {
+                            logger.error(`Details fetch error: ${e.message}`);
                             await sendMessage(fbId, { text: "❌ حدث خطأ في جلب تفاصيل العمل. تأكد من أن الموقع يعمل." });
+                            this.sessions.set(fbId, { step: 'DEV_MENU' });
                         }
                     } else {
                         await sendMessage(fbId, { text: "❌ رقم غير صحيح." });
@@ -163,6 +195,7 @@ export class ChatService {
         } catch (error) {
             logger.error(`[ChatService] Error handling message: ${error.message}`);
             await sendMessage(fbId, { text: "⚠️ حدث خطأ داخلي. يرجى المحاولة مرة أخرى بإرسال 'مرحبا'." });
+            this.sessions.set(fbId, { step: 'START' });
         }
     }
 }

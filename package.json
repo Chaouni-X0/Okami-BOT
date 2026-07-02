@@ -1,12 +1,19 @@
 {
   "name": "okami-bot-webhook",
-  "version": "1.0.0",
-  "description": "Facebook Messenger bot optimized for Render deployment",
+  "version": "2.0.0",
+  "description": "Advanced Facebook Messenger bot for manga/manhwa search and updates - Railway Optimized",
   "type": "module",
   "main": "src/index.js",
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "build": "echo 'Build complete'",
+    "test": "echo 'No tests configured'",
+    "setup": "npm install && pip3 install -r python_engine/requirements.txt"
   },
   "dependencies": {
     "express": "^4.21.2",
@@ -20,5 +27,20 @@
     "cheerio": "^1.0.0-rc.12",
     "sharp": "^0.33.0",
     "node-cron": "^3.0.3"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "facebook",
+    "messenger",
+    "bot",
+    "manga",
+    "manhwa",
+    "scraper"
+  ],
+  "author": "Chaouni-X0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Chaouni-X0/Okami-BOT.git"
   }
 }

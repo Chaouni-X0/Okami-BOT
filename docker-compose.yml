@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # Main Okami Bot application
+  okami-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: okami-bot
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+      - PYTHON_PATH=python3
+      - DATA_DIR=/app/data
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-dev-password}
+      - PAGE_ACCESS_TOKEN=${PAGE_ACCESS_TOKEN}
+      - FB_PAGE_ID=${FB_PAGE_ID}
+      - VERIFY_TOKEN=${VERIFY_TOKEN}
+      - MONGODB_URI=mongodb://mongo:27017/okami
+    volumes:
+      - ./src:/app/src
+      - ./python_engine:/app/python_engine
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - mongo
+    networks:
+      - okami-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # MongoDB for data storage
+  mongo:
+    image: mongo:7.0-alpine
+    container_name: okami-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=okami
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - okami-network
+    restart: unless-stopped
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: MongoDB Express for database management
+  mongo-express:
+    image: mongo-express:latest
+    container_name: okami-mongo-express
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://mongo:27017
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=admin
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=password
+    depends_on:
+      - mongo
+    networks:
+      - okami-network
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
+
+networks:
+  okami-network:
+    driver: bridge

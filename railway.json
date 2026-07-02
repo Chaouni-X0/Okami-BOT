@@ -1,0 +1,56 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "dockerfile",
+    "buildCommand": "npm install",
+    "dockerfile": "Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "npm start",
+    "restartPolicyMaxRetries": 5,
+    "restartPolicyWindowSeconds": 600
+  },
+  "variables": {
+    "PORT": {
+      "description": "Server port",
+      "value": "8080"
+    },
+    "NODE_ENV": {
+      "description": "Node environment",
+      "value": "production"
+    },
+    "PYTHON_PATH": {
+      "description": "Python executable path",
+      "value": "python3"
+    },
+    "DATA_DIR": {
+      "description": "Data directory path",
+      "value": "./data"
+    },
+    "ADMIN_PASSWORD": {
+      "description": "Admin activation key",
+      "value": ""
+    },
+    "PAGE_ACCESS_TOKEN": {
+      "description": "Facebook Page Access Token",
+      "value": ""
+    },
+    "FB_PAGE_ID": {
+      "description": "Facebook Page ID",
+      "value": ""
+    },
+    "VERIFY_TOKEN": {
+      "description": "Webhook verify token",
+      "value": ""
+    },
+    "MONGODB_URI": {
+      "description": "MongoDB connection URI (optional)",
+      "value": ""
+    }
+  },
+  "healthcheck": {
+    "path": "/status",
+    "interval": 30,
+    "timeout": 10
+  }
+}

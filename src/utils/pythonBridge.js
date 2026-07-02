@@ -16,77 +16,152 @@ export class PythonBridge {
             const args = [bridgePath, action];
             
             for (const [key, value] of Object.entries(params)) {
-                args.push(`--${key}`, value);
+                args.push(`--${key}`, String(value));
             }
 
             // Railway might use 'python' or 'python3'
             const pythonCmd = process.env.PYTHON_PATH || 'python3';
             logger.info(`[PythonBridge] Executing: ${pythonCmd} ${args.join(' ')}`);
             
-            // Note: spawn is from child_process, not global. 
-            // The error 'Cannot access process before initialization' was due to using 'process' 
-            // as a variable name while it's also a global object.
-            const pythonProcess = spawn(pythonCmd, args, { cwd: pythonEngineDir });
+            // Spawn Python process with proper error handling
+            const pythonProcess = spawn(pythonCmd, args, { 
+                cwd: pythonEngineDir,
+                timeout: 60000, // 60 second timeout
+                maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large responses
+            });
+
+            let stdout = '';
+            let stderr = '';
+            let timedOut = false;
+
+            // Set timeout for the entire operation
+            const timeout = setTimeout(() => {
+                timedOut = true;
+                pythonProcess.kill('SIGTERM');
+                logger.error(`[PythonBridge] Process timeout after 60s for action: ${action}`);
+                reject(new Error(`Python process timeout for action: ${action}`));
+            }, 60000);
+
+            pythonProcess.stdout.on('data', (chunk) => {
+                stdout += chunk.toString();
+            });
+
+            pythonProcess.stderr.on('data', (chunk) => {
+                stderr += chunk.toString();
+                logger.warn(`[PythonBridge] stderr: ${chunk.toString()}`);
+            });
 
             pythonProcess.on('error', (err) => {
-                if (err.code === 'ENOENT' && pythonCmd !== 'python') {
-                    logger.error(`[PythonBridge] Failed to start python process. '${pythonCmd}' not found. Trying 'python'...`);
-                    const fallbackProcess = spawn('python', args, { cwd: pythonEngineDir });
+                clearTimeout(timeout);
+                
+                if (err.code === 'ENOENT') {
+                    logger.error(`[PythonBridge] Python executable '${pythonCmd}' not found. Trying 'python'...`);
                     
-                    fallbackProcess.on('error', (fallbackErr) => {
-                        logger.error(`[PythonBridge] Fallback to 'python' also failed: ${fallbackErr.message}`);
-                        reject(new Error(`Python not found (tried ${pythonCmd} and python)`));
-                    });
+                    // Fallback to 'python' if python3 not found
+                    if (pythonCmd !== 'python') {
+                        const fallbackProcess = spawn('python', args, { 
+                            cwd: pythonEngineDir,
+                            timeout: 60000,
+                            maxBuffer: 10 * 1024 * 1024
+                        });
+                        
+                        let fallbackStdout = '';
+                        let fallbackStderr = '';
 
-                    this._setupProcess(fallbackProcess, resolve, reject);
+                        fallbackProcess.stdout.on('data', (chunk) => {
+                            fallbackStdout += chunk.toString();
+                        });
+
+                        fallbackProcess.stderr.on('data', (chunk) => {
+                            fallbackStderr += chunk.toString();
+                        });
+
+                        fallbackProcess.on('error', (fallbackErr) => {
+                            logger.error(`[PythonBridge] Fallback to 'python' also failed: ${fallbackErr.message}`);
+                            reject(new Error(`Python not found (tried ${pythonCmd} and python)`));
+                        });
+
+                        fallbackProcess.on('close', (code) => {
+                            if (code !== 0) {
+                                logger.error(`[PythonBridge] Fallback process error: ${fallbackStderr}`);
+                                reject(new Error(fallbackStderr || `Process exited with code ${code}`));
+                                return;
+                            }
+                            this._parseOutput(fallbackStdout, resolve, reject);
+                        });
+                    } else {
+                        reject(new Error(`Python not found`));
+                    }
                 } else {
                     logger.error(`[PythonBridge] Process error: ${err.message}`);
                     reject(err);
                 }
             });
 
-            this._setupProcess(pythonProcess, resolve, reject);
+            pythonProcess.on('close', (code) => {
+                clearTimeout(timeout);
+                
+                if (timedOut) {
+                    return; // Already rejected in timeout handler
+                }
+
+                if (code !== 0) {
+                    logger.error(`[PythonBridge] Process exited with code ${code}`);
+                    logger.error(`[PythonBridge] stderr: ${stderr}`);
+                    logger.error(`[PythonBridge] stdout: ${stdout}`);
+                    reject(new Error(stderr || `Process exited with code ${code}`));
+                    return;
+                }
+
+                this._parseOutput(stdout, resolve, reject);
+            });
         });
     }
 
-    static _setupProcess(pythonProcess, resolve, reject) {
-        let data = '';
-        let error = '';
-
-        pythonProcess.stdout.on('data', (chunk) => {
-            data += chunk.toString();
-        });
-
-        pythonProcess.stderr.on('data', (chunk) => {
-            error += chunk.toString();
-        });
-
-        pythonProcess.on('close', (code) => {
-            if (code !== 0) {
-                logger.error(`[PythonBridge] Error: ${error}`);
-                reject(new Error(error || `Process exited with code ${code}`));
+    static _parseOutput(data, resolve, reject) {
+        try {
+            if (!data || data.trim().length === 0) {
+                logger.error(`[PythonBridge] Empty output from Python process`);
+                reject(new Error('Empty output from Python process'));
                 return;
             }
-            try {
-                const lines = data.trim().split('\n');
-                const jsonStr = lines[lines.length - 1];
-                resolve(JSON.parse(jsonStr));
-            } catch (e) {
-                logger.error(`[PythonBridge] Parse Error: ${e.message}. Raw data: ${data}`);
-                reject(e);
+
+            const lines = data.trim().split('\n');
+            const jsonStr = lines[lines.length - 1];
+            
+            if (!jsonStr || jsonStr.trim().length === 0) {
+                logger.error(`[PythonBridge] No JSON output found. Last line: ${lines[lines.length - 1]}`);
+                reject(new Error('No JSON output from Python process'));
+                return;
             }
-        });
+
+            const result = JSON.parse(jsonStr);
+            resolve(result);
+        } catch (e) {
+            logger.error(`[PythonBridge] Parse Error: ${e.message}`);
+            logger.error(`[PythonBridge] Raw data: ${data}`);
+            reject(new Error(`Failed to parse Python output: ${e.message}`));
+        }
     }
 
     static async search(query) {
-        return this.call('search', { query });
+        if (!query || query.trim().length === 0) {
+            throw new Error('Search query cannot be empty');
+        }
+        return this.call('search', { query: query.trim() });
     }
 
     static async getDetails(source, url) {
+        if (!source || !url) {
+            throw new Error('Source and URL are required');
+        }
         return this.call('details', { source, url });
     }
 
     static async downloadChapter(source, title, chapter, url) {
+        if (!source || !title || !chapter || !url) {
+            throw new Error('Source, title, chapter, and URL are required');
+        }
         return this.call('download', { source, title, chapter, url });
     }
 }
