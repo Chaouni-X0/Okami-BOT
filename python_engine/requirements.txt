@@ -5,6 +5,4 @@ fastapi
 uvicorn
 python-dotenv
 aiohttp
-asyncio
 Pillow
-bs4
