@@ -1,0 +1,19 @@
+MangaSwat (meshmanga.com):
+- The site has moved to a Next.js architecture.
+- Search URL: https://meshmanga.com/search?q=query
+- Search results are likely rendered client-side or via a private API.
+- Need to check if https://meshmanga.com/api/search exists or if results are in the initial HTML state.
+
+Asura Scans (asurascans.com):
+- Using Astro/Next.js with a separate API.
+- Search results are NOT in the HTML of /search?q=...
+- Likely API: https://api.asurascans.com/ (need to verify exact endpoint).
+- Current HTML returns 404 for standard search paths.
+
+TeamX (olympustaff.com):
+- Heavy Cloudflare protection (503).
+- Requires advanced headers or a different scraping library (curl_cffi).
+
+Azora (azorafly.com):
+- Next.js site.
+- Search results are likely client-side.

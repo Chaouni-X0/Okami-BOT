@@ -60,9 +60,15 @@ class ScraperManager:
             start_time = time.time()
             results = await scraper.search(query)
             duration = time.time() - start_time
-            logger.info(f"[{scraper.source_name}] Found {len(results)} results in {duration:.2f}s")
+            
+            if not results:
+                logger.warning(f"[{scraper.source_name}] Returned 0 results for '{query}' in {duration:.2f}s. Check debug logs for HTML snippet.")
+            else:
+                logger.info(f"[{scraper.source_name}] Found {len(results)} results in {duration:.2f}s")
+                
             return results
         except Exception as e:
+            # Source health tracking could be added here
             logger.error(f"[{scraper.source_name}] Search failed: {str(e)}")
             return []
 
