@@ -9,7 +9,7 @@ import { sendMessage } from './messenger.js';
 export class ChatService {
     constructor() {
         this.sessions = new Map(); // fbId -> { step, data }
-        this.searchTimeout = 30000; // 30 second timeout for searches
+        this.searchTimeout = 90000; // 90 second timeout for searches (Python engine can be slow)
     }
 
     async handleMessage(fbId, message) {

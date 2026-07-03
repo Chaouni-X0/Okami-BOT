@@ -48,7 +48,7 @@ WORKDIR /app
 
 # Copy from builder
 COPY --from=builder /app /app
-COPY --from=builder /usr/local/lib/python3.*/dist-packages /usr/local/lib/python3.11/dist-packages
+COPY --from=builder /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
 
 # Set environment variables
 ENV NODE_ENV=production

@@ -2,6 +2,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
+import pythonBridge from '../utils/pythonBridge.js';
 
 export class ScraperEngine {
     constructor() {
@@ -12,151 +13,92 @@ export class ScraperEngine {
         return this.sources;
     }
 
-    async search(sourceId, query) {
-        const source = this.sources.find(s => s.id === sourceId);
-        if (!source) throw new Error('Source not found');
-
+    /**
+     * Search across all sources using Python Engine for better scraping (Cloudflare bypass)
+     */
+    async searchAll(query) {
+        logger.info(`[Scraper] Searching all sources for: ${query} using Python Engine`);
         try {
-            let searchUrl = '';
-            // تخصيص روابط البحث بناءً على هيكلية كل موقع
-            if (sourceId === 'teamx') {
-                searchUrl = `${source.url}/?s=${encodeURIComponent(query)}`;
-            } else if (sourceId === 'asura') {
-                searchUrl = `${source.url}/?s=${encodeURIComponent(query)}`;
-            } else {
-                // الافتراضي لمواقع Madara مثل سوات وازورا
-                searchUrl = `${source.url}/?s=${encodeURIComponent(query)}&post_type=wp-manga`;
+            const result = await pythonBridge.search(query);
+            if (result.status === 'success') {
+                // Map results to the format expected by the frontend
+                return result.results.map(res => ({
+                    title: res.title,
+                    url: res.url,
+                    sourceId: this._getSourceIdByName(res.source),
+                    sourceName: res.source
+                }));
             }
-
-            const { data } = await axios.get(searchUrl, {
-                headers: { 'User-Agent': config.scraping.userAgent },
-                timeout: config.scraping.timeout
-            });
-            const $ = cheerio.load(data);
-            const results = [];
-
-            // محددات بحث مرنة لتغطية مختلف القوالب
-            const selectors = [
-                '.c-tabs-item__content', 
-                '.search-wrap .manga-item', 
-                '.list-listing .page-item-detail',
-                '.manga-item',
-                '.tab-content-wrap .c-tabs-item__content'
-            ];
-
-            $(selectors.join(', ')).each((i, el) => {
-                const titleEl = $(el).find('h3 a, .post-title a, .h4 a, .title a');
-                const title = titleEl.text().trim();
-                const url = titleEl.attr('href');
-                if (title && url) {
-                    results.push({ title, url });
-                }
-            });
-
-            // إذا لم نجد نتائج بالمحددات السابقة، نحاول البحث عن أي روابط تحتوي على كلمة المانجا
-            if (results.length === 0) {
-                $('a').each((i, el) => {
-                    const text = $(el).text().toLowerCase();
-                    const href = $(el).attr('href');
-                    if (href && text.includes(query.toLowerCase()) && (href.includes('/manga/') || href.includes('/series/') || href.includes('/comics/'))) {
-                        results.push({ title: $(el).text().trim(), url: href });
-                    }
-                });
-            }
-
-            return results;
+            throw new Error(result.message || 'Search failed');
         } catch (error) {
-            logger.error(`Search failed for ${sourceId}: ${error.message}`);
+            logger.error(`[Scraper] Python searchAll failed: ${error.message}`);
+            // Fallback to basic node scraping if needed, but python is preferred
             return [];
         }
     }
 
+    /**
+     * Search a specific source
+     */
+    async search(sourceId, query) {
+        logger.info(`[Scraper] Searching ${sourceId} for: ${query}`);
+        // For now, we use searchAll and filter, or we could update bridge to support source filtering
+        const allResults = await this.searchAll(query);
+        return allResults.filter(r => r.sourceId === sourceId);
+    }
+
     async getMangaDetails(sourceId, mangaUrl) {
+        logger.info(`[Scraper] Getting details for ${mangaUrl} using Python Engine`);
         try {
-            const { data } = await axios.get(mangaUrl, {
-                headers: { 'User-Agent': config.scraping.userAgent },
-                timeout: config.scraping.timeout
-            });
-            const $ = cheerio.load(data);
-
-            const title = $('h1').text().trim() || $('.post-title h1').text().trim() || $('title').text().split('|')[0].trim();
-            const coverUrl = $('.summary_image img').attr('src') || $('.post-thumbnail img').attr('src') || $('.manga-poster img').attr('src');
-            const status = $('.post-status .summary-content').text().trim() || $('.status-value').text().trim() || 'Unknown';
+            const source = this.sources.find(s => s.id === sourceId);
+            const sourceName = source ? source.name : sourceId;
             
-            const chapters = [];
-            // محددات فصول مرنة
-            const chapterSelectors = [
-                '.wp-manga-chapter a',
-                '.chapters-list a',
-                '.main.version-chap a',
-                '.listing-chapters_wrap a',
-                'li.chapter-item a'
-            ];
-
-            $(chapterSelectors.join(', ')).each((i, el) => {
-                const url = $(el).attr('href');
-                const name = $(el).text().trim();
-                // استخراج رقم الفصل من النص
-                const match = name.match(/\d+(\.\d+)?/);
-                const number = match ? parseFloat(match[0]) : (i + 1);
-                
-                if (url && !chapters.find(c => c.url === url)) {
-                    chapters.push({ url, number, name });
-                }
-            });
-
-            // ترتيب الفصول تصاعدياً
-            chapters.sort((a, b) => a.number - b.number);
-
-            return { title, coverUrl, status, chapters };
+            const result = await pythonBridge.getDetails(sourceName, mangaUrl);
+            if (result.status === 'success') {
+                return {
+                    title: result.info.title,
+                    coverUrl: result.info.cover,
+                    description: result.info.description,
+                    status: 'Unknown',
+                    chapters: result.chapters.map((ch, i) => ({
+                        url: ch.url,
+                        name: ch.name,
+                        number: i + 1
+                    }))
+                };
+            }
+            throw new Error(result.message || 'Failed to get details');
         } catch (error) {
-            logger.error(`Failed to get details from ${mangaUrl}: ${error.message}`);
+            logger.error(`[Scraper] Python getMangaDetails failed: ${error.message}`);
             throw error;
         }
     }
 
     async parseChapterImages(sourceId, chapterUrl) {
+        logger.info(`[Scraper] Parsing images for ${chapterUrl} using Python Engine`);
         try {
-            const { data } = await axios.get(chapterUrl, {
-                headers: { 'User-Agent': config.scraping.userAgent },
-                timeout: config.scraping.timeout
+            const source = this.sources.find(s => s.id === sourceId);
+            const sourceName = source ? source.name : sourceId;
+            
+            // Note: In bridge.py, run_download returns {status, images}
+            const result = await pythonBridge.call('download', { 
+                source: sourceName, 
+                url: chapterUrl 
             });
-            const $ = cheerio.load(data);
-            const images = [];
-
-            // محددات صور مرنة
-            const imageSelectors = [
-                '.reading-content img',
-                '#reader-images img',
-                '.wp-manga-chapter-img',
-                '.page-break img',
-                '.v-comics-chapter-image img'
-            ];
-
-            $(imageSelectors.join(', ')).each((i, el) => {
-                const src = $(el).attr('src')?.trim() || 
-                            $(el).attr('data-src')?.trim() || 
-                            $(el).attr('data-lazy-src')?.trim() ||
-                            $(el).attr('data-cdn')?.trim();
-                
-                if (src && !src.includes('logo') && !src.includes('banner')) {
-                    // تحويل الروابط النسبية إلى مطلقة إذا لزم الأمر
-                    if (src.startsWith('//')) {
-                        images.push('https:' + src);
-                    } else if (src.startsWith('/')) {
-                        const baseUrl = new URL(chapterUrl).origin;
-                        images.push(baseUrl + src);
-                    } else {
-                        images.push(src);
-                    }
-                }
-            });
-
-            return [...new Set(images)]; // إزالة التكرار
+            
+            if (result.status === 'success') {
+                return result.images;
+            }
+            throw new Error(result.message || 'Failed to parse images');
         } catch (error) {
-            logger.error(`Failed to parse images from ${chapterUrl}: ${error.message}`);
+            logger.error(`[Scraper] Python parseChapterImages failed: ${error.message}`);
             return [];
         }
+    }
+
+    _getSourceIdByName(name) {
+        const source = this.sources.find(s => s.name.toLowerCase() === name.toLowerCase());
+        return source ? source.id : name.toLowerCase();
     }
 }
 
