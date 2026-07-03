@@ -23,10 +23,10 @@ export const config = {
         timeout: 30000,
     },
     sources: [
-        { id: 'mangaswat', name: 'مانجا سوات', url: 'https://swatmanga.me' },
+        { id: 'mangaswat', name: 'مانجا سوات', url: 'https://meshmanga.com' },
+        { id: 'asura', name: 'اسورا', url: 'https://asurascans.com' },
         { id: 'teamx', name: 'تيم اكس', url: 'https://olympustaff.com' },
-        { id: 'azora', name: 'Azora', url: 'https://azorafly.com' },
-        { id: 'asura', name: 'اسورا', url: 'https://asurascans.com' }
+        { id: 'azora', name: 'Azora', url: 'https://azorafly.com' }
     ],
     settings: {
         maxImageHeight: 1500,

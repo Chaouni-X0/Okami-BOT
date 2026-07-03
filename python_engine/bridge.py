@@ -11,20 +11,17 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.manager import ScraperManager
 from scrapers.wp_manga_scraper import WPMangaScraper
+from scrapers.azora_scraper import AzoraScraper
 from utils.logger import logger
 
 async def get_manager():
     """Initialize and return the ScraperManager with all available scrapers."""
+    # Updated to 2026 active URLs and requested sites only
     scrapers = [
-        # WP-Manga (Madara) based sites
-        WPMangaScraper("MangaArab", "https://www.mangaarabia.com", use_cloudscraper=True),
+        WPMangaScraper("MangaSwat", "https://meshmanga.com", use_cloudscraper=True),
         WPMangaScraper("Asura", "https://asurascans.com", use_cloudscraper=True),
-        WPMangaScraper("TeamX", "https://teamxmanga.store", use_cloudscraper=True),
-        WPMangaScraper("MangaLek", "https://lek-manga.net", use_cloudscraper=True),
-        WPMangaScraper("MangaSwat", "https://swatmanga.me", use_cloudscraper=True),
-        WPMangaScraper("MoonManga", "https://moonmanga.com", use_cloudscraper=True),
-        WPMangaScraper("MangaSpark", "https://mangaspark.com", use_cloudscraper=True),
-        WPMangaScraper("MangaLaro", "https://mangalaro.com", use_cloudscraper=True)
+        WPMangaScraper("TeamX", "https://olympustaff.com", use_cloudscraper=True),
+        AzoraScraper() # Custom scraper for Azora (azorafly.com)
     ]
     return ScraperManager(scrapers)
 
@@ -89,17 +86,13 @@ async def run_download(source, title, chapter, url):
         
         logger.info(f"[Bridge] Downloading chapter from {source}: {url}")
         
-        # Create temp directory if it doesn't exist
-        temp_dir = Path(__file__).parent / "data" / "temp"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        
         images = await manager.get_chapter_images(source, url)
         
         if not images:
             logger.warning(f"[Bridge] No images found for chapter: {url}")
             return {"status": "success", "images": []}
         
-        logger.info(f"[Bridge] Downloaded {len(images)} images")
+        logger.info(f"[Bridge] Found {len(images)} images")
         return {"status": "success", "images": images}
     except Exception as e:
         logger.error(f"[Bridge] Download error: {str(e)}")

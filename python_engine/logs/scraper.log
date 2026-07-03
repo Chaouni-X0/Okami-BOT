@@ -311,3 +311,27 @@
 2026-07-03 11:53:16,123 - MangaScraper - INFO - Search page for SwatManga seems empty or blocked. Trying alternative...
 2026-07-03 11:53:46,134 - MangaScraper - ERROR - Attempt 1 failed for https://swatmanga.me/?s=Solo%20Leveling using cloudscraper: HTTPSConnectionPool(host='swatmanga.me', port=443): Read timed out. (read timeout=30)
 2026-07-03 11:53:53,167 - MangaScraper - INFO - Search page for MoonManga seems empty or blocked. Trying alternative...
+2026-07-03 18:05:01,854 - MangaScraper - INFO - Initialized ScraperManager with 4 scrapers.
+2026-07-03 18:05:05,783 - MangaScraper - ERROR - Attempt 1 failed for https://azorafly.com/search?query=Solo%20Leveling using cloudscraper: 404 Client Error: Not Found for url: https://azorafly.com/search?query=Solo%20Leveling
+2026-07-03 18:05:05,783 - MangaScraper - ERROR - Response content: <!DOCTYPE html><html lang="ar" dir="rtl" data-site-language="ar" class="dark" style="color-scheme: dark;"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="astro-view-transitions-enabled" content="true"><meta name="astro-view-transitions-fallback" content="animate"><script type="module" src="/_vcomics/Bnz_uZSS.js"></script><style id="vastro-navigation-progress-style">
+  #vastro-navigation-progress {
+    position: fixed;
+    inset-inline-start: 0;
+    top:
+2026-07-03 18:05:07,979 - MangaScraper - ERROR - Attempt 2 failed for https://azorafly.com/search?query=Solo%20Leveling using cloudscraper: 404 Client Error: Not Found for url: https://azorafly.com/search?query=Solo%20Leveling
+2026-07-03 18:05:07,980 - MangaScraper - ERROR - Response content: <!DOCTYPE html><html lang="ar" dir="rtl" data-site-language="ar" class="dark" style="color-scheme: dark;"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="astro-view-transitions-enabled" content="true"><meta name="astro-view-transitions-fallback" content="animate"><script type="module" src="/_vcomics/Bnz_uZSS.js"></script><style id="vastro-navigation-progress-style">
+  #vastro-navigation-progress {
+    position: fixed;
+    inset-inline-start: 0;
+    top:
+2026-07-03 18:05:11,693 - MangaScraper - ERROR - Attempt 3 failed for https://azorafly.com/search?query=Solo%20Leveling using cloudscraper: 404 Client Error: Not Found for url: https://azorafly.com/search?query=Solo%20Leveling
+2026-07-03 18:05:11,693 - MangaScraper - ERROR - Response content: <!DOCTYPE html><html lang="ar" dir="rtl" data-site-language="ar" class="dark" style="color-scheme: dark;"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="astro-view-transitions-enabled" content="true"><meta name="astro-view-transitions-fallback" content="animate"><script type="module" src="/_vcomics/Bnz_uZSS.js"></script><style id="vastro-navigation-progress-style">
+  #vastro-navigation-progress {
+    position: fixed;
+    inset-inline-start: 0;
+    top:
+2026-07-03 18:05:11,694 - MangaScraper - INFO - Found 13 results for query: Solo Leveling
+2026-07-03 18:05:11,695 - MangaScraper - INFO - All scrapers closed.
+2026-07-03 18:05:42,022 - MangaScraper - INFO - Initialized ScraperManager with 4 scrapers.
+2026-07-03 18:05:47,132 - MangaScraper - INFO - Found 166 results for query: Solo Leveling
+2026-07-03 18:05:47,133 - MangaScraper - INFO - All scrapers closed.
