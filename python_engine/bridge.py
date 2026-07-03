@@ -11,8 +11,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.manager import ScraperManager
 from scrapers.wp_manga_scraper import WPMangaScraper
-from scrapers.mangadex_scraper import MangaDexScraper
-from scrapers.gmanga_scraper import GMangaScraper
 from utils.logger import logger
 
 async def get_manager():
