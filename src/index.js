@@ -12,9 +12,9 @@ const automationService = new AutomationService();
 const app = express();
 app.use(express.json());
 
-// Root route
+// Root route - Handles Healthchecks
 app.get('/', (req, res) => {
-    res.send('🐺 Okami Bot Server is running perfectly on Render!');
+    res.status(200).json({ status: 'ok', message: '🐺 Okami Bot is alive!' });
 });
 
 // Health check route
