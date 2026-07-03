@@ -9,25 +9,26 @@ except ImportError:
     from ..utils.logger import logger
 
 class WPMangaScraper(BaseScraper):
-    """Generic scraper for sites using the WP-Manga (Madara) theme or similar structures."""
+    """Optimized scraper for sites using the WP-Manga (Madara) theme."""
     
     async def search(self, query: str) -> List[Dict[str, Any]]:
-        # Try multiple search methods (Tachiyomi-style)
-        search_urls = [
+        # Optimized: Directly use the correct search path
+        # First attempt: With post_type for better accuracy
+        # Second attempt: Generic search if first fails
+        search_paths = [
             f"{self.base_url}/?s={quote(query)}&post_type=wp-manga",
-            f"{self.base_url}/manga?s={quote(query)}&post_type=wp-manga",
             f"{self.base_url}/?s={quote(query)}"
         ]
         
         results = []
         seen_urls = set()
         
-        for url in search_urls:
-            logger.info(f"[WPMangaScraper] Searching: {url}")
+        for url in search_paths:
+            logger.info(f"[{self.source_name}] Searching: {url}")
             soup = await self.fetch_html(url)
             if not soup: continue
             
-            # Common Madara search selectors
+            # Selectors based on Tachiyomi Madara implementation
             items = soup.select('.c-tabs-item__content') or \
                     soup.select('.search-wrap .manga-item') or \
                     soup.select('.row.c-tabs-item__content') or \
@@ -50,14 +51,18 @@ class WPMangaScraper(BaseScraper):
                         img = item.select_one('img')
                         title = img.get('alt', '').strip() if img else ""
                     
-                    if title:
+                    # Double check if the title actually contains parts of the query (Filtering fix)
+                    query_words = query.lower().split()
+                    if any(word in title.lower() for word in query_words):
                         results.append({
                             'title': title,
                             'url': manga_url,
                             'source': self.source_name
                         })
             
-            if results: break # Stop if we found results
+            if results: 
+                logger.info(f"[{self.source_name}] Found {len(results)} matches.")
+                break
             
         return results
 
@@ -92,22 +97,10 @@ class WPMangaScraper(BaseScraper):
         if not soup: return []
         
         chapters = []
-        # Standard Madara chapter selectors
         chapter_items = soup.select('.wp-manga-chapter a') or \
                         soup.select('.listing-chapters_wrap .wp-manga-chapter a') or \
                         soup.select('li.wp-manga-chapter a')
         
-        if not chapter_items:
-            # Try to find manga_id for AJAX fallback if needed (though most sites have them in HTML now)
-            manga_id = None
-            id_tag = soup.select_one('.wp-manga-action-button[data-id]') or soup.select_one('#manga-chapters-holder[data-id]')
-            if id_tag:
-                manga_id = id_tag.get('data-id')
-            
-            if manga_id:
-                # If we really need AJAX, we could implement it here, but let's try more selectors first
-                pass
-
         for ch in chapter_items:
             chapters.append({
                 'name': ch.text.strip(),
@@ -121,32 +114,22 @@ class WPMangaScraper(BaseScraper):
         if not soup: return []
         
         images = []
-        # Common image selectors for Madara and similar themes
         image_tags = soup.select('.reading-content img') or \
                      soup.select('.wp-manga-chapter-img') or \
-                     soup.select('.page-break img') or \
-                     soup.select('.v-comics-chapter-image img')
+                     soup.select('.page-break img')
         
         for img in image_tags:
-            # Check all possible image attributes (Tachiyomi-style)
             src = img.get('src') or \
                   img.get('data-src') or \
                   img.get('data-lazy-src') or \
-                  img.get('data-full-url') or \
                   img.get('data-cdn') or \
                   img.get('data-original')
             
             if src:
                 src = src.strip()
-                # Filter out small icons/logos
-                if "logo" in src.lower() or "banner" in src.lower() or "favicon" in src.lower():
+                if any(x in src.lower() for x in ["logo", "banner", "favicon"]):
                     continue
-                    
-                if src.startswith('//'):
-                    src = 'https:' + src
-                elif src.startswith('/'):
-                    src = self.base_url.rstrip('/') + src
-                
+                if src.startswith('//'): src = 'https:' + src
                 if src not in images:
                     images.append(src)
         return images

@@ -50,11 +50,14 @@ class AzoraScraper(BaseScraper):
                 title = img.get('alt', '').strip() if img else ""
             
             if title:
-                results.append({
-                    'title': title,
-                    'url': manga_url,
-                    'source': self.source_name
-                })
+                # Filtering fix: Ensure title matches query
+                query_words = query.lower().split()
+                if any(word in title.lower() for word in query_words):
+                    results.append({
+                        'title': title,
+                        'url': manga_url,
+                        'source': self.source_name
+                    })
         return results
 
     async def get_manga_info(self, url: str) -> Dict[str, Any]:
