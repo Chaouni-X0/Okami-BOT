@@ -12,7 +12,7 @@ const automationService = new AutomationService();
 const app = express();
 app.use(express.json());
 
-// Root route - Handles Healthchecks
+// Root route - Handles Healthchecks immediately
 app.get('/', (req, res) => {
     res.status(200).json({ status: 'ok', message: '🐺 Okami Bot is alive!' });
 });
@@ -21,7 +21,7 @@ app.get('/', (req, res) => {
 app.get('/status', (req, res) => {
     res.json({ 
         status: 'online', 
-        project: '🐺 Okami Bot (Render Optimized)', 
+        project: '🐺 Okami Bot', 
         version: '5.0.0' 
     });
 });
@@ -46,22 +46,17 @@ app.post('/webhook', (req, res) => {
     const body = req.body;
 
     if (body.object === 'page') {
-        // Acknowledge receipt instantly to prevent Facebook timeout (HTTP 200)
         res.status(200).send('EVENT_RECEIVED');
 
-        // Process events asynchronously
         body.entry.forEach(entry => {
             if (entry.messaging) {
                 entry.messaging.forEach(event => {
                     if (event.message && event.message.text) {
-                        // Use setImmediate to ensure non-blocking execution
                         setImmediate(async () => {
                             try {
                                 const sender_id = event.sender.id;
                                 const text = event.message.text;
-                                
                                 logger.info(`Processing message from ${sender_id}: ${text}`);
-                                
                                 const responseText = await chatService.handleMessage(sender_id, text);
                                 if (responseText) {
                                     if (typeof responseText === 'string') {
@@ -83,14 +78,17 @@ app.post('/webhook', (req, res) => {
     }
 });
 
-const PORT = config.port;
-app.listen(PORT, async () => {
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
     logger.info(`Okami Bot API running on port ${PORT}`);
     
-    // Initialize Automation Service
-    try {
-        await automationService.init();
-    } catch (e) {
-        logger.error(`Failed to init automation: ${e.message}`);
-    }
+    // Async init to not block healthcheck
+    setImmediate(async () => {
+        try {
+            await automationService.init();
+            logger.info('Automation Service initialized successfully.');
+        } catch (e) {
+            logger.error(`Failed to init automation: ${e.message}`);
+        }
+    });
 });
