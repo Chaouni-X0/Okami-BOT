@@ -122,14 +122,29 @@ class WPMangaScraper(BaseScraper):
         # Common image selectors for Madara and similar themes
         image_tags = soup.select('.reading-content img') or \
                      soup.select('.wp-manga-chapter-img') or \
-                     soup.select('.page-break img')
+                     soup.select('.page-break img') or \
+                     soup.select('.v-comics-chapter-image img')
         
         for img in image_tags:
-            src = img.get('src') or img.get('data-src') or img.get('data-lazy-src') or img.get('data-full-url')
+            # Check all possible image attributes (Tachiyomi-style)
+            src = img.get('src') or \
+                  img.get('data-src') or \
+                  img.get('data-lazy-src') or \
+                  img.get('data-full-url') or \
+                  img.get('data-cdn') or \
+                  img.get('data-original')
+            
             if src:
-                # Remove extra whitespace and potential parameters
                 src = src.strip()
+                # Filter out small icons/logos
+                if "logo" in src.lower() or "banner" in src.lower() or "favicon" in src.lower():
+                    continue
+                    
                 if src.startswith('//'):
                     src = 'https:' + src
-                images.append(src)
+                elif src.startswith('/'):
+                    src = self.base_url.rstrip('/') + src
+                
+                if src not in images:
+                    images.append(src)
         return images

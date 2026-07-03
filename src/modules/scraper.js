@@ -32,7 +32,6 @@ export class ScraperEngine {
             throw new Error(result.message || 'Search failed');
         } catch (error) {
             logger.error(`[Scraper] Python searchAll failed: ${error.message}`);
-            // Fallback to basic node scraping if needed, but python is preferred
             return [];
         }
     }
@@ -42,7 +41,7 @@ export class ScraperEngine {
      */
     async search(sourceId, query) {
         logger.info(`[Scraper] Searching ${sourceId} for: ${query}`);
-        // For now, we use searchAll and filter, or we could update bridge to support source filtering
+        // If it's a specific search, we can still use the python engine but filter results
         const allResults = await this.searchAll(query);
         return allResults.filter(r => r.sourceId === sourceId);
     }
@@ -80,7 +79,6 @@ export class ScraperEngine {
             const source = this.sources.find(s => s.id === sourceId);
             const sourceName = source ? source.name : sourceId;
             
-            // Note: In bridge.py, run_download returns {status, images}
             const result = await pythonBridge.call('download', { 
                 source: sourceName, 
                 url: chapterUrl 
@@ -102,4 +100,9 @@ export class ScraperEngine {
     }
 }
 
-export default new ScraperEngine();
+// Create the instance
+const scraperEngineInstance = new ScraperEngine();
+
+// Export both the class and the default instance
+// This ensures that ChatService can use it correctly regardless of how it's imported
+export default scraperEngineInstance;
