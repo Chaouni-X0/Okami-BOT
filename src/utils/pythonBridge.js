@@ -126,12 +126,20 @@ export class PythonBridge {
                 return;
             }
 
+            // Find the last line that looks like JSON
             const lines = data.trim().split('\n');
-            const jsonStr = lines[lines.length - 1];
+            let jsonStr = '';
+            for (let i = lines.length - 1; i >= 0; i--) {
+                const line = lines[i].trim();
+                if (line.startsWith('{') && line.endsWith('}')) {
+                    jsonStr = line;
+                    break;
+                }
+            }
             
-            if (!jsonStr || jsonStr.trim().length === 0) {
-                logger.error(`[PythonBridge] No JSON output found. Last line: ${lines[lines.length - 1]}`);
-                reject(new Error('No JSON output from Python process'));
+            if (!jsonStr) {
+                logger.error(`[PythonBridge] No JSON output found in: ${data}`);
+                reject(new Error('No valid JSON output from Python process'));
                 return;
             }
 

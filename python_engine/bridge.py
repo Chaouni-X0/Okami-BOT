@@ -123,11 +123,13 @@ async def main():
         else:
             result = {"status": "error", "message": f"Unknown action: {args.action}"}
         
-        # Output result as JSON
-        print(json.dumps(result))
+        # Ensure ONLY JSON is printed to stdout
+        sys.stdout.write(json.dumps(result) + "\n")
+        sys.stdout.flush()
     except Exception as e:
         logger.error(f"[Bridge] Fatal error: {str(e)}")
-        print(json.dumps({"status": "error", "message": str(e)}))
+        sys.stdout.write(json.dumps({"status": "error", "message": str(e)}) + "\n")
+        sys.stdout.flush()
         sys.exit(1)
 
 if __name__ == '__main__':
