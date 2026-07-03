@@ -12,51 +12,53 @@ class WPMangaScraper(BaseScraper):
     """Generic scraper for sites using the WP-Manga (Madara) theme or similar structures."""
     
     async def search(self, query: str) -> List[Dict[str, Any]]:
-        # Try standard search
-        url = f"{self.base_url}/?s={quote(query)}&post_type=wp-manga"
-        soup = await self.fetch_html(url)
-        
-        if not soup or not (soup.select('.c-tabs-item__content') or soup.select('.post-title a')):
-            # Try alternative search without post_type
-            alt_url = f"{self.base_url}/?s={quote(query)}"
-            soup = await self.fetch_html(alt_url)
-
-        if not soup: return []
+        # Try multiple search methods (Tachiyomi-style)
+        search_urls = [
+            f"{self.base_url}/?s={quote(query)}&post_type=wp-manga",
+            f"{self.base_url}/manga?s={quote(query)}&post_type=wp-manga",
+            f"{self.base_url}/?s={quote(query)}"
+        ]
         
         results = []
-        # Try multiple common selectors for Madara theme search results
-        items = soup.select('.c-tabs-item__content') or \
-                soup.select('.search-wrap .manga-item') or \
-                soup.select('.row.c-tabs-item__content') or \
-                soup.select('.tabbed-content .post-title a') or \
-                soup.select('.c-tabs-item__content .post-title a') or \
-                soup.select('.manga-item .post-title a') or \
-                soup.select('.post-title a') or \
-                soup.select('h3 a')
-        
         seen_urls = set()
-        for item in items:
-            title_tag = item if item.name == 'a' else item.select_one('h3 a, .post-title a, a')
-            if title_tag and title_tag.get('href'):
-                url = title_tag['href']
-                if url.startswith('/'):
-                    url = self.base_url.rstrip('/') + url
-                
-                if url in seen_urls: continue
-                seen_urls.add(url)
-                
-                title = title_tag.text.strip()
-                if not title:
-                    img = item.select_one('img')
-                    if img and img.get('alt'):
-                        title = img['alt'].strip()
-                
-                if title:
-                    results.append({
-                        'title': title,
-                        'url': url,
-                        'source': self.source_name
-                    })
+        
+        for url in search_urls:
+            logger.info(f"[WPMangaScraper] Searching: {url}")
+            soup = await self.fetch_html(url)
+            if not soup: continue
+            
+            # Common Madara search selectors
+            items = soup.select('.c-tabs-item__content') or \
+                    soup.select('.search-wrap .manga-item') or \
+                    soup.select('.row.c-tabs-item__content') or \
+                    soup.select('.tab-content-wrap .post-title a') or \
+                    soup.select('.manga-item .post-title a') or \
+                    soup.select('.post-title a')
+            
+            for item in items:
+                title_tag = item if item.name == 'a' else item.select_one('h3 a, .post-title a, a')
+                if title_tag and title_tag.get('href'):
+                    manga_url = title_tag['href']
+                    if manga_url.startswith('/'):
+                        manga_url = self.base_url.rstrip('/') + manga_url
+                    
+                    if manga_url in seen_urls: continue
+                    seen_urls.add(manga_url)
+                    
+                    title = title_tag.text.strip()
+                    if not title:
+                        img = item.select_one('img')
+                        title = img.get('alt', '').strip() if img else ""
+                    
+                    if title:
+                        results.append({
+                            'title': title,
+                            'url': manga_url,
+                            'source': self.source_name
+                        })
+            
+            if results: break # Stop if we found results
+            
         return results
 
     async def get_manga_info(self, url: str) -> Dict[str, Any]:

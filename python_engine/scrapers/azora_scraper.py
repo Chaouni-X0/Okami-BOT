@@ -14,33 +14,45 @@ class AzoraScraper(BaseScraper):
     async def search(self, query: str) -> List[Dict[str, Any]]:
         # Azora search uses /series?title=query
         url = f"{self.base_url}/series?title={quote(query)}"
+        logger.info(f"[AzoraScraper] Searching: {url}")
         soup = await self.fetch_html(url)
         if not soup: return []
         
         results = []
-        # Based on the structure seen in browser_navigate
-        items = soup.select('a[href^="/series/"]')
+        # Azora often uses specific card structures
+        items = soup.select('a[href^="/series/"]') or \
+                soup.select('.series-card a') or \
+                soup.select('.manga-item a')
+                
         seen_urls = set()
-        
         for item in items:
-            url = item.get('href')
-            if not url or url == '/series/': continue
-            if not url.startswith('http'):
-                url = self.base_url.rstrip('/') + url
+            href = item.get('href')
+            if not href or href == '/series/': continue
             
-            if url in seen_urls: continue
-            seen_urls.add(url)
+            manga_url = href
+            if not manga_url.startswith('http'):
+                manga_url = self.base_url.rstrip('/') + manga_url
+            
+            # Ensure it's a series link, not a chapter link
+            if "/series/" not in manga_url: continue
+            
+            if manga_url in seen_urls: continue
+            seen_urls.add(manga_url)
             
             title = item.get('title') or item.text.strip()
+            # If title is empty, try to get it from child elements or alt text
+            if not title:
+                title_el = item.select_one('h3, .title, .name')
+                title = title_el.text.strip() if title_el else ""
+            
             if not title:
                 img = item.select_one('img')
-                if img and img.get('alt'):
-                    title = img['alt']
+                title = img.get('alt', '').strip() if img else ""
             
             if title:
                 results.append({
                     'title': title,
-                    'url': url,
+                    'url': manga_url,
                     'source': self.source_name
                 })
         return results

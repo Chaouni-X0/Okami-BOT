@@ -44,8 +44,8 @@ class BaseScraper(abc.ABC):
         headers = kwargs.pop('headers', {})
         if 'User-Agent' not in headers:
             headers['User-Agent'] = random.choice(self.user_agents)
-        if 'Referer' not in headers and "mangadex.org" not in self.base_url:
-            headers['Referer'] = self.base_url
+        if 'Referer' not in headers:
+            headers['Referer'] = url if url.startswith(self.base_url) else self.base_url
         session = await self.get_session()
         
         if self.use_cloudscraper:
@@ -104,8 +104,8 @@ class BaseScraper(abc.ABC):
         headers = kwargs.pop('headers', {})
         if 'User-Agent' not in headers:
             headers['User-Agent'] = random.choice(self.user_agents)
-        if 'Referer' not in headers and "mangadex.org" not in self.base_url:
-            headers['Referer'] = self.base_url
+        if 'Referer' not in headers:
+            headers['Referer'] = url if url.startswith(self.base_url) else self.base_url
         session = await self.get_session()
         
         if self.use_cloudscraper:
