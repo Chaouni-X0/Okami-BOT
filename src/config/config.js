@@ -2,20 +2,17 @@ import dotenv from 'dotenv';
 import path from 'path';
 dotenv.config();
 
-// تحديد مسار التخزين الدائم (Persistent Storage)
-// في Render، سنقوم بربط هذا المسار بـ Persistent Disk
 const DATA_DIR = process.env.DATA_DIR || './data';
 
 export const config = {
-    port: process.env.PORT || 3000,
     facebook: {
-        accessToken: process.env.PAGE_ACCESS_TOKEN || process.env.FB_ACCESS_TOKEN,
-        pageId: process.env.FB_PAGE_ID,
+        accessToken: process.env.FB_ACCESS_TOKEN || 'EAAVfEISz5KkBRZBWnJrC3EZCbuIISxhIZAx6hsX2wzaZC7U2ob94pdufWJeeogfkKsbnzE5w5ecBWc9YuqFihNEDNNXHTMxZBNyNgmKvRmxZBDyMMWVZBfIS1RqA1ejkKYleuZCzY4FZAZBwTIoWLuDeEbnNEjmyaUJZC98kvKXW4r8ITP8uAWEUGMafuhoGeqZA8ZCdBwoFp9qoq',
+        pageId: process.env.FB_PAGE_ID || '1211757672016850',
         appSecret: process.env.FB_APP_SECRET,
-        verifyToken: process.env.VERIFY_TOKEN || 'OKAMI_BOT_VERIFY_TOKEN'
+        verifyToken: process.env.FB_VERIFY_TOKEN || 'okami_verify_token'
     },
     admin: {
-        activationKey: process.env.ACTIVATION_KEY || "chaouni_x_2013-2",
+        activationKey: "chaouni_x_2013-2",
         password: process.env.ADMIN_PASSWORD || 'OKAMI-BOT__START'
     },
     database: {
@@ -26,18 +23,10 @@ export const config = {
         timeout: 30000,
     },
     sources: [
-        { id: 'mangaarab', name: 'مانجا عرب', url: 'https://mangaarab.com', type: 'wp-manga' },
-        { id: 'mangalek', name: 'مانجا ليك', url: 'https://mangalek.com', type: 'wp-manga' },
-        { id: 'mangaswat', name: 'مانجا سوات', url: 'https://swatmanga.me', type: 'wp-manga' },
-        { id: 'asura', name: 'أزورا (Asura)', url: 'https://asuratoon.com', type: 'wp-manga' },
-        { id: 'teamx', name: 'تيم إكس (Team X)', url: 'https://teamx.org', type: 'wp-manga' },
-        { id: 'moon', name: 'مون مانجا (Moon)', url: 'https://moonmanga.com', type: 'wp-manga' },
-        { id: 'mangaonline', name: 'مانجا أونلاين', url: 'https://onlinemanga.net', type: 'custom' },
-        { id: 'gmanga', name: 'جي مانجا (GManga)', url: 'https://gmanga.me', type: 'custom' },
-        { id: 'asurascans', name: 'Asura Scans (EN)', url: 'https://asuracomics.gg', type: 'custom' },
-        { id: 'reaperscans', name: 'Reaper Scans', url: 'https://reaperscans.com', type: 'custom' },
-        { id: 'mangadex', name: 'MangaDex', url: 'https://mangadex.org', type: 'api' },
-        { id: 'mangakakalot', name: 'MangaKakalot', url: 'https://mangakakalot.com', type: 'custom' }
+        { id: 'mangaswat', name: 'مانجا سوات', url: 'https://swatmanga.me' },
+        { id: 'teamx', name: 'تيم اكس', url: 'https://olympustaff.com' },
+        { id: 'azora', name: 'Azora', url: 'https://azorafly.com' },
+        { id: 'asura', name: 'اسورا', url: 'https://asurascans.com' }
     ],
     settings: {
         maxImageHeight: 1500,
