@@ -10,17 +10,12 @@ CONFIG = {
     "MAX_RETRIES": int(os.getenv("MAX_RETRIES", 3)),
     "TIMEOUT": int(os.getenv("TIMEOUT", 30)),
     "SOURCES": [
-        {"name": "MangaArab", "url": "https://mangaarab.com", "type": "wp-manga"},
-        {"name": "MangaLek", "url": "https://mangalek.com", "type": "wp-manga"},
+        {"name": "MangaArab", "url": "https://www.mangaarabia.com", "type": "wp-manga"},
+        {"name": "MangaLek", "url": "https://lek-manga.net", "type": "wp-manga"},
         {"name": "MangaSwat", "url": "https://swatmanga.me", "type": "wp-manga"},
-        {"name": "AsuraAR", "url": "https://asuratoon.com", "type": "wp-manga"},
-        {"name": "TeamX", "url": "https://teamx.org", "type": "wp-manga"},
+        {"name": "AsuraAR", "url": "https://asurascans.com", "type": "wp-manga"},
+        {"name": "TeamX", "url": "https://teamxmanga.store", "type": "wp-manga"},
         {"name": "MoonManga", "url": "https://moonmanga.com", "type": "wp-manga"},
         {"name": "MangaOnline", "url": "https://onlinemanga.net", "type": "custom"},
-        {"name": "GManga", "url": "https://gmanga.me", "type": "custom"},
-        {"name": "AsuraEN", "url": "https://asuracomics.gg", "type": "custom"},
-        {"name": "ReaperScans", "url": "https://reaperscans.com", "type": "custom"},
-        {"name": "MangaDex", "url": "https://api.mangadex.org", "type": "api"},
-        {"name": "MangaKakalot", "url": "https://mangakakalot.com", "type": "custom"}
     ]
 }

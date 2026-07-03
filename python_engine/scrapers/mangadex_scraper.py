@@ -9,7 +9,10 @@ class MangaDexScraper(BaseScraper):
         super().__init__("MangaDex", "https://api.mangadex.org")
 
     async def search(self, query: str) -> List[Dict[str, Any]]:
+        # Use aiohttp for MangaDex as it's a clean API
+        self.use_cloudscraper = False
         url = f"{self.base_url}/manga"
+        # MangaDex API requires title parameter
         params = {'title': query, 'limit': 10}
         data = await self.fetch_json(url, params=params)
         if not data: return []

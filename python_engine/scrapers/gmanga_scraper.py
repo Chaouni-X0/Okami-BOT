@@ -7,13 +7,34 @@ except ImportError:
 
 class GMangaScraper(BaseScraper):
     def __init__(self):
-        super().__init__("GManga", "https://gmanga.me")
+        super().__init__("GManga", "https://gmanga.me", use_cloudscraper=True)
 
     async def search(self, query: str) -> List[Dict[str, Any]]:
+        # GManga API is often protected, try the main site search first
+        url = f"{self.base_url}/mangas?search={query}"
+        soup = await self.fetch_html(url)
+        if not soup: return []
+        
+        results = []
+        # Try to find manga items in the search page
+        for item in soup.select('.manga-item, .manga-card, a[href*="/mangas/"]'):
+            title_tag = item.select_one('.title, h3, h2') or item
+            if '/mangas/' in item.get('href', '') and title_tag.text.strip():
+                results.append({
+                    'title': title_tag.text.strip(),
+                    'url': self.base_url + item['href'] if item['href'].startswith('/') else item['href'],
+                    'source': self.source_name
+                })
+        
+        if results: return results
+
+        # Fallback to API if page search fails
         url = f"{self.base_url}/api/mangas/search"
         params = {'title': query}
-        # GManga requires X-Requested-With header
-        headers = {'X-Requested-With': 'XMLHttpRequest'}
+        headers = {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': self.base_url
+        }
         data = await self.fetch_json(url, params=params, headers=headers)
         if not data: return []
         

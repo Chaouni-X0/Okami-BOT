@@ -19,16 +19,14 @@ async def get_manager():
     """Initialize and return the ScraperManager with all available scrapers."""
     scrapers = [
         # WP-Manga (Madara) based sites
-        WPMangaScraper("MangaArab", "https://mangaarab.com"),
-        WPMangaScraper("Asura", "https://asuratoon.com"),
-        WPMangaScraper("TeamX", "https://teamx.org"),
-        WPMangaScraper("MangaLek", "https://mangalek.com"),
-        WPMangaScraper("MangaSwat", "https://swatmanga.me"),
-        WPMangaScraper("MoonManga", "https://moonmanga.com"),
-        
-        # Specialized scrapers
-        MangaDexScraper(),
-        GMangaScraper()
+        WPMangaScraper("MangaArab", "https://www.mangaarabia.com", use_cloudscraper=True),
+        WPMangaScraper("Asura", "https://asurascans.com", use_cloudscraper=True),
+        WPMangaScraper("TeamX", "https://teamxmanga.store", use_cloudscraper=True),
+        WPMangaScraper("MangaLek", "https://lek-manga.net", use_cloudscraper=True),
+        WPMangaScraper("MangaSwat", "https://swatmanga.me", use_cloudscraper=True),
+        WPMangaScraper("MoonManga", "https://moonmanga.com", use_cloudscraper=True),
+        WPMangaScraper("MangaSpark", "https://mangaspark.com", use_cloudscraper=True),
+        WPMangaScraper("MangaLaro", "https://mangalaro.com", use_cloudscraper=True)
     ]
     return ScraperManager(scrapers)
 
@@ -43,6 +41,7 @@ async def run_search(query):
         query = query.strip()
         logger.info(f"[Bridge] Searching for: {query}")
         
+        # Increase timeout for search
         results = await manager.search_all(query)
         
         if not results:

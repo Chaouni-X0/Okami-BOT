@@ -14,14 +14,19 @@ class ScraperManager:
     async def search_all(self, query: str) -> List[Dict[str, Any]]:
         tasks = []
         for name, scraper in self.scrapers.items():
-            tasks.append(self._run_search_with_fallback(scraper, query))
+            # Add timeout to each scraper task to prevent one slow source from blocking all
+            tasks.append(asyncio.wait_for(self._run_search_with_fallback(scraper, query), timeout=25.0))
         
-        results = await asyncio.gather(*tasks)
+        # Use return_exceptions=True to ensure one failure doesn't crash the whole search
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         
         all_results = []
-        for res_list in results:
-            if res_list:
-                all_results.extend(res_list)
+        for i, res in enumerate(results):
+            if isinstance(res, Exception):
+                logger.error(f"Scraper task failed: {res}")
+                continue
+            if res:
+                all_results.extend(res)
         
         logger.info(f"Found {len(all_results)} results for query: {query}")
         return all_results
