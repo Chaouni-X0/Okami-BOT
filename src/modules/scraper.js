@@ -41,7 +41,6 @@ export class ScraperEngine {
      */
     async search(sourceId, query) {
         logger.info(`[Scraper] Searching ${sourceId} for: ${query}`);
-        // If it's a specific search, we can still use the python engine but filter results
         const allResults = await this.searchAll(query);
         return allResults.filter(r => r.sourceId === sourceId);
     }
@@ -49,10 +48,17 @@ export class ScraperEngine {
     async getMangaDetails(sourceId, mangaUrl) {
         logger.info(`[Scraper] Getting details for ${mangaUrl} using Python Engine`);
         try {
-            const source = this.sources.find(s => s.id === sourceId);
-            const sourceName = source ? source.name : sourceId;
+            // FIX: Always use the English internal ID (sourceId) for the Python Engine
+            // The Python Engine (bridge.py) expects names like 'asura', 'mangaswat', etc.
+            // Previously, it was passing the Arabic name which caused failures.
             
-            const result = await pythonBridge.getDetails(sourceName, mangaUrl);
+            const source = this.sources.find(s => s.id === sourceId);
+            // We use sourceId directly because it's the English key (e.g., 'asura')
+            const internalName = source ? source.id : sourceId;
+            
+            logger.info(`[Scraper] Calling Python Engine with internal source name: ${internalName}`);
+            
+            const result = await pythonBridge.getDetails(internalName, mangaUrl);
             if (result.status === 'success') {
                 return {
                     title: result.info.title,
@@ -77,10 +83,10 @@ export class ScraperEngine {
         logger.info(`[Scraper] Parsing images for ${chapterUrl} using Python Engine`);
         try {
             const source = this.sources.find(s => s.id === sourceId);
-            const sourceName = source ? source.name : sourceId;
+            const internalName = source ? source.id : sourceId;
             
             const result = await pythonBridge.call('download', { 
-                source: sourceName, 
+                source: internalName, 
                 url: chapterUrl 
             });
             
@@ -95,14 +101,14 @@ export class ScraperEngine {
     }
 
     _getSourceIdByName(name) {
-        const source = this.sources.find(s => s.name.toLowerCase() === name.toLowerCase());
+        // Find source by name (Arabic or English) and return the ID (English)
+        const source = this.sources.find(s => 
+            s.name.toLowerCase() === name.toLowerCase() || 
+            s.id.toLowerCase() === name.toLowerCase()
+        );
         return source ? source.id : name.toLowerCase();
     }
 }
 
-// Create the instance
 const scraperEngineInstance = new ScraperEngine();
-
-// Export both the class and the default instance
-// This ensures that ChatService can use it correctly regardless of how it's imported
 export default scraperEngineInstance;

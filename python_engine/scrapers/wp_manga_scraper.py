@@ -12,14 +12,12 @@ class WPMangaScraper(BaseScraper):
     """Optimized scraper for sites using WP-Manga or Next.js transitions."""
     
     async def search(self, query: str) -> List[Dict[str, Any]]:
-        # Handle different search encodings
         query_plus = query.replace(' ', '+')
-        query_encoded = quote(query)
         
+        # Optimized: Removed /search?q= path as it returns 404
         search_urls = [
-            f"{self.base_url}/search?q={query_plus}", # Next.js pattern
-            f"{self.base_url}/?s={query_plus}&post_type=wp-manga", # Classic Madara
-            f"{self.base_url}/?s={query_encoded}" # Generic WP
+            f"{self.base_url}/?s={query_plus}&post_type=wp-manga", # Primary for Madara
+            f"{self.base_url}/?s={query_plus}" # Fallback
         ]
         
         results = []
@@ -30,33 +28,31 @@ class WPMangaScraper(BaseScraper):
             soup = await self.fetch_html(url)
             
             if not soup:
-                # If we get 0 results, log the start of the HTML for debugging as requested
                 continue
 
-            # Log first 500 chars for debugging if no results found later
-            html_snippet = str(soup)[:500]
+            # Diagnostic: Print HTML snippet if no results are found to debug MangaSwat
+            html_content = str(soup)
+            html_snippet = html_content[:1000]
             
-            # Selectors updated for Next.js and Modern Madara
-            # 1. Next.js / Series cards
-            # 2. Classic Madara
-            # 3. Generic Search
+            # Selectors updated to be more inclusive for Next.js and Modern Madara
+            # Added more specific selectors for MangaSwat's potential Next.js structure
             items = soup.select('a[href*="/series/"], a[href*="/manga/"], a[href*="/comics/"]') or \
                     soup.select('.c-tabs-item__content') or \
-                    soup.select('.search-wrap .manga-item')
+                    soup.select('.search-wrap .manga-item') or \
+                    soup.select('.post-title a') or \
+                    soup.select('h3 a')
             
             found_in_this_url = 0
             for item in items:
                 manga_url = item.get('href')
                 if not manga_url or manga_url in seen_urls: continue
                 
-                # Basic validation to ensure it's a manga link and not a category
-                if any(x in manga_url for x in ['/genres/', '/tags/', '/author/']): continue
+                if any(x in manga_url for x in ['/genres/', '/tags/', '/author/', '/plans/']): continue
                 
                 if manga_url.startswith('/'):
                     manga_url = self.base_url.rstrip('/') + manga_url
                 
                 title = item.text.strip()
-                # If title is empty, try to find it in nested tags
                 if not title:
                     title_tag = item.select_one('h3, h4, .post-title, .title')
                     title = title_tag.text.strip() if title_tag else ""
@@ -66,7 +62,6 @@ class WPMangaScraper(BaseScraper):
                     title = img.get('alt', '').strip() if img else ""
 
                 if title:
-                    # Filtering: Ensure title matches query
                     query_words = query.lower().split()
                     if any(word in title.lower() for word in query_words):
                         results.append({
@@ -81,7 +76,8 @@ class WPMangaScraper(BaseScraper):
                 logger.info(f"[{self.source_name}] Found {found_in_this_url} matches at {url}")
                 break
             else:
-                logger.debug(f"[{self.source_name}] No results at {url}. HTML Snippet: {html_snippet}")
+                # Log snippet for debugging MangaSwat (meshmanga.com)
+                logger.warning(f"[{self.source_name}] 0 results at {url}. HTML Snippet (first 1000 chars): {html_snippet}")
             
         return results
 
@@ -90,7 +86,7 @@ class WPMangaScraper(BaseScraper):
         if not soup: return {}
         
         title = ""
-        title_tag = soup.select_one('h1') or soup.select_one('.post-title h1')
+        title_tag = soup.select_one('h1') or soup.select_one('.post-title h1') or soup.select_one('.title h1')
         if title_tag: title = title_tag.text.strip()
             
         cover = ""
@@ -99,7 +95,7 @@ class WPMangaScraper(BaseScraper):
             cover = img_tag.get('src') or img_tag.get('data-src') or img_tag.get('data-lazy-src')
             
         desc = ""
-        desc_tag = soup.select_one('.description-summary, .manga-excerpt, .summary__content, #summary')
+        desc_tag = soup.select_one('.description-summary, .manga-excerpt, .summary__content, #summary, .post-content')
         if desc_tag: desc = desc_tag.text.strip()
         
         return {
@@ -114,8 +110,8 @@ class WPMangaScraper(BaseScraper):
         if not soup: return []
         
         chapters = []
-        # Support for Next.js chapter list and Classic Madara
-        chapter_items = soup.select('a[href*="/chapter-"], .wp-manga-chapter a, li.wp-manga-chapter a')
+        # inclusive selectors for chapters
+        chapter_items = soup.select('a[href*="/chapter-"], .wp-manga-chapter a, li.wp-manga-chapter a, .chapter-link')
         
         for ch in chapter_items:
             href = ch['href']
@@ -132,8 +128,7 @@ class WPMangaScraper(BaseScraper):
         if not soup: return []
         
         images = []
-        # Advanced image detection (Tachiyomi-style)
-        image_tags = soup.select('img[src*="chapter"], .reading-content img, .wp-manga-chapter-img, .page-break img')
+        image_tags = soup.select('img[src*="chapter"], .reading-content img, .wp-manga-chapter-img, .page-break img, .chapter-img')
         
         for img in image_tags:
             src = img.get('src') or \
