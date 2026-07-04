@@ -10,23 +10,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core.manager import ScraperManager
-from scrapers.wp_manga_scraper import WPMangaScraper
+from scrapers.mangaswat_scraper import MangaSwatScraper
+from scrapers.asura_scraper import AsuraScraper
+from scrapers.teamx_scraper import TeamXScraper
 from scrapers.azora_scraper import AzoraScraper
 from utils.logger import logger
 
 async def get_manager():
-    """Initialize and return the ScraperManager with all available scrapers."""
-    # Updated to 2026 active URLs and requested sites only
+    """Initialize and return the ScraperManager with all independent scrapers."""
     scrapers = [
-        # meshmanga.com renders search results client-side via Next.js JS,
-        # so it needs the full Playwright browser (use_cloudscraper=False).
-        WPMangaScraper("MangaSwat", "https://meshmanga.com", use_cloudscraper=False),
-        # asurascans.com and olympustaff.com return usable static HTML for
-        # search/details, so the lightweight cloudscraper path is enough and
-        # much faster/cheaper than launching a browser for every request.
-        WPMangaScraper("Asura", "https://asurascans.com", use_cloudscraper=True),
-        WPMangaScraper("TeamX", "https://olympustaff.com", use_cloudscraper=True),
-        AzoraScraper() # Custom scraper for Azora (azorafly.com) - always Playwright, Next.js site
+        MangaSwatScraper(),
+        AsuraScraper(),
+        TeamXScraper(),
+        AzoraScraper()
     ]
     return ScraperManager(scrapers)
 
@@ -37,18 +33,10 @@ async def run_search(query):
         if not query or not query.strip():
             return {"status": "error", "message": "Search query cannot be empty"}
         
-        # Clean query
         query = query.strip()
         logger.info(f"[Bridge] Searching for: {query}")
         
-        # Increase timeout for search
         results = await manager.search_all(query)
-        
-        if not results:
-            logger.info(f"[Bridge] No results found for: {query}")
-            return {"status": "success", "results": []}
-        
-        logger.info(f"[Bridge] Found {len(results)} results for: {query}")
         return {"status": "success", "results": results}
     except Exception as e:
         logger.error(f"[Bridge] Search error: {str(e)}")
@@ -89,15 +77,9 @@ async def run_download(source, title, chapter, url):
         if not source or not url:
             return {"status": "error", "message": "Source and URL are required"}
         
-        logger.info(f"[Bridge] Downloading chapter from {source}: {url}")
+        logger.info(f"[Bridge] Downloading images from {source}: {url}")
         
         images = await manager.get_chapter_images(source, url)
-        
-        if not images:
-            logger.warning(f"[Bridge] No images found for chapter: {url}")
-            return {"status": "success", "images": []}
-        
-        logger.info(f"[Bridge] Found {len(images)} images")
         return {"status": "success", "images": images}
     except Exception as e:
         logger.error(f"[Bridge] Download error: {str(e)}")
@@ -108,8 +90,7 @@ async def run_download(source, title, chapter, url):
 async def main():
     """Main entry point for the bridge."""
     parser = argparse.ArgumentParser(description='Manga Scraper Bridge')
-    parser.add_argument('action', choices=['search', 'details', 'download'], 
-                       help='Action to perform')
+    parser.add_argument('action', choices=['search', 'details', 'download'], help='Action to perform')
     parser.add_argument('--query', type=str, help='Search query')
     parser.add_argument('--source', type=str, help='Manga source name')
     parser.add_argument('--url', type=str, help='Manga or chapter URL')
@@ -128,7 +109,6 @@ async def main():
         else:
             result = {"status": "error", "message": f"Unknown action: {args.action}"}
         
-        # Ensure ONLY JSON is printed to stdout
         sys.stdout.write(json.dumps(result) + "\n")
         sys.stdout.flush()
     except Exception as e:

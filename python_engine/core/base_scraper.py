@@ -5,22 +5,13 @@ import time
 from typing import List, Dict, Any, Optional
 from utils.logger import logger
 from playwright.async_api import async_playwright
-from playwright_stealth import Stealth
+from playwright_stealth import stealth_async
 from bs4 import BeautifulSoup
-import cloudscraper
 
 class BaseScraper(abc.ABC):
-    def __init__(self, source_name: str, base_url: str, use_cloudscraper: bool = False):
+    def __init__(self, source_name: str, base_url: str):
         self.source_name = source_name
         self.base_url = base_url
-        # use_cloudscraper=True -> lightweight HTTP fetch (fast, low memory, no JS execution).
-        # use_cloudscraper=False -> full headless Playwright browser (slower, needed for
-        # sites that render their content client-side with JavaScript, e.g. Next.js).
-        # Launching a full browser for every scraper on every request is expensive on a
-        # resource-limited host, so only sites that actually need JS rendering should set
-        # use_cloudscraper=False.
-        self.use_cloudscraper = use_cloudscraper
-        self._cloudscraper_session = None
         self.playwright = None
         self.browser = None
         self.context = None
@@ -29,26 +20,26 @@ class BaseScraper(abc.ABC):
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         ]
 
-    def _get_cloudscraper_session(self):
-        if not self._cloudscraper_session:
-            self._cloudscraper_session = cloudscraper.create_scraper()
-        return self._cloudscraper_session
-
     async def _init_browser(self):
         if not self.browser:
-            self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(headless=True)
-            self.context = await self.browser.new_context(
-                user_agent=random.choice(self.user_agents),
-                viewport={'width': 1280, 'height': 720}
-            )
-            logger.info(f"[{self.source_name}] Playwright browser initialized.")
+            try:
+                self.playwright = await async_playwright().start()
+                self.browser = await self.playwright.chromium.launch(headless=True)
+                self.context = await self.browser.new_context(
+                    user_agent=random.choice(self.user_agents),
+                    viewport={'width': 1280, 'height': 720}
+                )
+                logger.info(f"[{self.source_name}] Playwright browser initialized.")
+            except Exception as e:
+                logger.error(f"[{self.source_name}] Failed to initialize browser: {str(e)}")
+                raise e
 
     async def fetch_page_content(self, url: str, wait_selector: Optional[str] = None, timeout: int = 30000) -> Optional[str]:
-        """Fetch page content using Playwright to handle JS and Cloudflare."""
+        """Fetch page content using Playwright with stealth and JS handling."""
         await self._init_browser()
         page = await self.context.new_page()
-        await Stealth().apply_stealth_async(page)
+        # Correct usage of stealth_async
+        await stealth_async(page)
         
         try:
             logger.info(f"[{self.source_name}] Navigating to: {url}")
@@ -58,12 +49,12 @@ class BaseScraper(abc.ABC):
             # Handle Cloudflare / Wait for content
             if wait_selector:
                 try:
-                    await page.wait_for_selector(wait_selector, timeout=10000)
+                    await page.wait_for_selector(wait_selector, timeout=15000)
                 except:
                     logger.warning(f"[{self.source_name}] Timeout waiting for selector: {wait_selector}")
             else:
                 # Basic wait if no selector
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
             
             content = await page.content()
             return content
@@ -73,29 +64,8 @@ class BaseScraper(abc.ABC):
         finally:
             await page.close()
 
-    async def _fetch_via_cloudscraper(self, url: str) -> Optional[str]:
-        """Lightweight fetch for sites that don't need JS rendering (plain HTML response)."""
-        try:
-            session = self._get_cloudscraper_session()
-            loop = asyncio.get_event_loop()
-            # cloudscraper is sync, run it in a thread so it doesn't block the event loop
-            response = await loop.run_in_executor(
-                None, lambda: session.get(url, headers={'User-Agent': random.choice(self.user_agents)}, timeout=15)
-            )
-            if response.status_code == 404:
-                logger.warning(f"[{self.source_name}] 404 Not Found for {url} - skipping retries.")
-                return None
-            response.raise_for_status()
-            return response.text
-        except Exception as e:
-            logger.error(f"[{self.source_name}] cloudscraper error fetching {url}: {str(e)}")
-            return None
-
     async def fetch_html(self, url: str, wait_selector: Optional[str] = None) -> Optional[BeautifulSoup]:
-        if self.use_cloudscraper:
-            content = await self._fetch_via_cloudscraper(url)
-        else:
-            content = await self.fetch_page_content(url, wait_selector)
+        content = await self.fetch_page_content(url, wait_selector)
         if content:
             return BeautifulSoup(content, 'html.parser')
         return None
@@ -123,7 +93,4 @@ class BaseScraper(abc.ABC):
             await self.playwright.stop()
         self.browser = None
         self.playwright = None
-        if self._cloudscraper_session:
-            self._cloudscraper_session.close()
-            self._cloudscraper_session = None
-        logger.info(f"[{self.source_name}] Closed.")
+        logger.info(f"[{self.source_name}] Playwright browser closed.")
