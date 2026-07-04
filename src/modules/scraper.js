@@ -1,8 +1,6 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
 import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
-import pythonBridge from '../utils/pythonBridge.js';
+import scraperManager from '../scraper/scraperManager.js';
 
 export class ScraperEngine {
     constructor() {
@@ -14,24 +12,23 @@ export class ScraperEngine {
     }
 
     /**
-     * Search across all sources using Python Engine for better scraping (Cloudflare bypass)
+     * Search across all sources using Node.js Playwright Engine
      */
     async searchAll(query) {
-        logger.info(`[Scraper] Searching all sources for: ${query} using Python Engine`);
+        logger.info(`[Scraper] Searching all sources for: ${query} using Node.js Engine`);
         try {
-            const result = await pythonBridge.search(query);
-            if (result.status === 'success') {
-                // Map results to the format expected by the frontend
+            const result = await scraperManager.search(query);
+            if (result.success) {
                 return result.results.map(res => ({
                     title: res.title,
                     url: res.url,
-                    sourceId: this._getSourceIdByName(res.source),
-                    sourceName: res.source
+                    sourceId: res.source,
+                    sourceName: res.sourceName
                 }));
             }
-            throw new Error(result.message || 'Search failed');
+            throw new Error(result.error || 'Search failed');
         } catch (error) {
-            logger.error(`[Scraper] Python searchAll failed: ${error.message}`);
+            logger.error(`[Scraper] Node.js searchAll failed: ${error.message}`);
             return [];
         }
     }
@@ -46,20 +43,10 @@ export class ScraperEngine {
     }
 
     async getMangaDetails(sourceId, mangaUrl) {
-        logger.info(`[Scraper] Getting details for ${mangaUrl} using Python Engine`);
+        logger.info(`[Scraper] Getting details for ${mangaUrl} using Node.js Engine`);
         try {
-            // FIX: Always use the English internal ID (sourceId) for the Python Engine
-            // The Python Engine (bridge.py) expects names like 'asura', 'mangaswat', etc.
-            // Previously, it was passing the Arabic name which caused failures.
-            
-            const source = this.sources.find(s => s.id === sourceId);
-            // We use sourceId directly because it's the English key (e.g., 'asura')
-            const internalName = source ? source.id : sourceId;
-            
-            logger.info(`[Scraper] Calling Python Engine with internal source name: ${internalName}`);
-            
-            const result = await pythonBridge.getDetails(internalName, mangaUrl);
-            if (result.status === 'success') {
+            const result = await scraperManager.getDetails(sourceId, mangaUrl);
+            if (result.success) {
                 return {
                     title: result.info.title,
                     coverUrl: result.info.cover,
@@ -72,41 +59,25 @@ export class ScraperEngine {
                     }))
                 };
             }
-            throw new Error(result.message || 'Failed to get details');
+            throw new Error(result.error || 'Failed to get details');
         } catch (error) {
-            logger.error(`[Scraper] Python getMangaDetails failed: ${error.message}`);
+            logger.error(`[Scraper] Node.js getMangaDetails failed: ${error.message}`);
             throw error;
         }
     }
 
     async parseChapterImages(sourceId, chapterUrl) {
-        logger.info(`[Scraper] Parsing images for ${chapterUrl} using Python Engine`);
+        logger.info(`[Scraper] Parsing images for ${chapterUrl} using Node.js Engine`);
         try {
-            const source = this.sources.find(s => s.id === sourceId);
-            const internalName = source ? source.id : sourceId;
-            
-            const result = await pythonBridge.call('download', { 
-                source: internalName, 
-                url: chapterUrl 
-            });
-            
-            if (result.status === 'success') {
+            const result = await scraperManager.getChapterImages(sourceId, chapterUrl);
+            if (result.success) {
                 return result.images;
             }
-            throw new Error(result.message || 'Failed to parse images');
+            throw new Error(result.error || 'Failed to parse images');
         } catch (error) {
-            logger.error(`[Scraper] Python parseChapterImages failed: ${error.message}`);
+            logger.error(`[Scraper] Node.js parseChapterImages failed: ${error.message}`);
             return [];
         }
-    }
-
-    _getSourceIdByName(name) {
-        // Find source by name (Arabic or English) and return the ID (English)
-        const source = this.sources.find(s => 
-            s.name.toLowerCase() === name.toLowerCase() || 
-            s.id.toLowerCase() === name.toLowerCase()
-        );
-        return source ? source.id : name.toLowerCase();
     }
 }
 

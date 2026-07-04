@@ -1,9 +1,11 @@
+# Use Node.js 22 as the base image
 FROM node:22-bullseye
 
-# Install Python and Playwright system dependencies
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for Playwright
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -24,33 +26,25 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# Copy package files
+COPY package*.json ./
 
 # Install Node dependencies
-COPY package*.json ./
 RUN npm install
 
-# Install Python dependencies
-COPY python_engine/requirements.txt ./python_engine/requirements.txt
-RUN pip3 install --no-cache-dir -r python_engine/requirements.txt
-
 # Install Playwright browsers (Chromium only for efficiency)
-RUN python3 -m playwright install chromium
-RUN python3 -m playwright install-deps chromium
+RUN npx playwright install chromium
+RUN npx playwright install-deps chromium
 
-# Copy source code
+# Copy the rest of the application
 COPY . .
 
-# Permissions and directories
-RUN chmod +x python_engine/bridge.py
-RUN mkdir -p data/temp logs
-
-# Environment variables
+# Set environment variables
 ENV NODE_ENV=production
 ENV PORT=8080
-ENV PYTHON_PATH=python3
 
+# Expose port
 EXPOSE 8080
 
-# Start application
+# Start the application
 CMD ["npm", "start"]

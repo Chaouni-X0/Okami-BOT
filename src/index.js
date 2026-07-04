@@ -2,9 +2,19 @@ import express from 'express';
 import { config } from './config/config.js';
 import { ChatService } from './services/chat.service.js';
 import { FacebookPublisher } from './modules/publisher.js';
-import { QueueSystem } from './modules/queue.js';
 import { AutomationService } from './services/automation.service.js';
 import logger from './utils/logger.js';
+import scraperManager from './scraper/scraperManager.js';
+
+// Global Error Handling to prevent crashes
+process.on('uncaughtException', (err) => {
+    logger.error(`[CRITICAL] Uncaught Exception: ${err.message}`);
+    logger.error(err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error(`[CRITICAL] Unhandled Rejection at: ${promise}, reason: ${reason}`);
+});
 
 const chatService = new ChatService();
 const automationService = new AutomationService();
@@ -12,17 +22,19 @@ const automationService = new AutomationService();
 const app = express();
 app.use(express.json());
 
-// Root route - Handles Healthchecks immediately
+// Root route
 app.get('/', (req, res) => {
     res.status(200).json({ status: 'ok', message: '🐺 Okami Bot is alive!' });
 });
 
-// Health check route
-app.get('/status', (req, res) => {
+// Production-ready Health Check
+app.get('/health', (req, res) => {
     res.json({ 
         status: 'online', 
         project: '🐺 Okami Bot', 
-        version: '5.0.0' 
+        version: '6.0.0 (Node-Only)',
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage()
     });
 });
 
@@ -79,14 +91,14 @@ app.post('/webhook', (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     logger.info(`Okami Bot API running on port ${PORT}`);
 
     if (!config.facebook.accessToken || !config.facebook.pageId) {
-        logger.error('⚠️ FB_ACCESS_TOKEN و/أو FB_PAGE_ID غير مضبوطين في متغيرات البيئة. النشر على فيسبوك والرد على المستخدمين لن يعمل حتى تضبطهما في إعدادات Railway.');
+        logger.error('⚠️ FB_ACCESS_TOKEN and/or FB_PAGE_ID not set.');
     }
 
-    // Async init to not block healthcheck
+    // Async init
     setImmediate(async () => {
         try {
             await automationService.init();
@@ -94,5 +106,15 @@ app.listen(PORT, () => {
         } catch (e) {
             logger.error(`Failed to init automation: ${e.message}`);
         }
+    });
+});
+
+// Graceful Shutdown
+process.on('SIGTERM', async () => {
+    logger.info('SIGTERM received. Shutting down gracefully...');
+    await scraperManager.closeAll();
+    server.close(() => {
+        logger.info('Process terminated.');
+        process.exit(0);
     });
 });
