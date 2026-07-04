@@ -1,6 +1,6 @@
-const BaseScraper = require('../baseScraper');
+import { BaseScraper } from '../baseScraper.js';
 
-class AzoraScraper extends BaseScraper {
+export class AzoraScraper extends BaseScraper {
     constructor() {
         super('Azora', 'https://azorafly.com');
     }
@@ -64,5 +64,3 @@ class AzoraScraper extends BaseScraper {
         return images;
     }
 }
-
-module.exports = AzoraScraper;

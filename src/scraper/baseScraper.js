@@ -1,8 +1,8 @@
-const { chromium } = require('playwright');
-const cheerio = require('cheerio');
-const logger = require('../utils/logger');
+import { chromium } from 'playwright';
+import * as cheerio from 'cheerio';
+import logger from '../utils/logger.js';
 
-class BaseScraper {
+export class BaseScraper {
     constructor(sourceName, baseUrl) {
         this.sourceName = sourceName;
         this.baseUrl = baseUrl;
@@ -27,12 +27,10 @@ class BaseScraper {
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 720 },
-            deviceScaleFactor: 1,
         });
 
         const page = await context.newPage();
 
-        // Anti-Bot Stealth Injection
         await page.addInitScript(() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
             window.chrome = { runtime: {} };
@@ -46,17 +44,18 @@ class BaseScraper {
     async fetchPage(url, waitSelector = null, retries = 3) {
         let lastError;
         for (let i = 0; i < retries; i++) {
-            const browser = await this.initBrowser();
-            const { page, context } = await this.createPage(browser);
-            
+            let browser, context, page;
             try {
+                browser = await this.initBrowser();
+                const setup = await this.createPage(browser);
+                page = setup.page;
+                context = setup.context;
+
                 logger.info(`[${this.sourceName}] Fetching: ${url} (Attempt ${i + 1})`);
                 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
                 
                 if (waitSelector) {
-                    await page.waitForSelector(waitSelector, { timeout: 10000 }).catch(() => {
-                        logger.warn(`[${this.sourceName}] Timeout waiting for selector: ${waitSelector}`);
-                    });
+                    await page.waitForSelector(waitSelector, { timeout: 10000 }).catch(() => {});
                 } else {
                     await page.waitForTimeout(2000);
                 }
@@ -67,8 +66,7 @@ class BaseScraper {
             } catch (error) {
                 lastError = error;
                 logger.error(`[${this.sourceName}] Error fetching ${url}: ${error.message}`);
-                await context.close();
-                // Exponential backoff
+                if (context) await context.close();
                 await new Promise(res => setTimeout(res, Math.pow(2, i) * 1000));
             }
         }
@@ -82,5 +80,3 @@ class BaseScraper {
         }
     }
 }
-
-module.exports = BaseScraper;

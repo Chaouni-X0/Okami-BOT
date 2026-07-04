@@ -1,6 +1,6 @@
 import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
-import scraperManager from '../scraper/scraperManager.js';
+import { scraperManager } from '../scraper/scraperManager.js';
 
 export class ScraperEngine {
     constructor() {

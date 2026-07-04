@@ -1,6 +1,6 @@
-const BaseScraper = require('../baseScraper');
+import { BaseScraper } from '../baseScraper.js';
 
-class TeamXScraper extends BaseScraper {
+export class TeamXScraper extends BaseScraper {
     constructor() {
         super('TeamX', 'https://olympustaff.com');
     }
@@ -60,5 +60,3 @@ class TeamXScraper extends BaseScraper {
         return images;
     }
 }
-
-module.exports = TeamXScraper;

@@ -1,6 +1,6 @@
-const BaseScraper = require('../baseScraper');
+import { BaseScraper } from '../baseScraper.js';
 
-class AsuraScraper extends BaseScraper {
+export class AsuraScraper extends BaseScraper {
     constructor() {
         super('Asura', 'https://asurascans.com');
     }
@@ -16,7 +16,7 @@ class AsuraScraper extends BaseScraper {
             const href = link.attr('href');
             
             if (href && title.toLowerCase().includes(query.toLowerCase())) {
-                results.append({
+                results.push({
                     title,
                     url: href,
                     source: 'asura',
@@ -61,5 +61,3 @@ class AsuraScraper extends BaseScraper {
         return images;
     }
 }
-
-module.exports = AsuraScraper;

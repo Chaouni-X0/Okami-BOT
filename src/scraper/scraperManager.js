@@ -1,8 +1,8 @@
-const logger = require('../utils/logger');
-const AsuraScraper = require('./sources/asura');
-const MangaSwatScraper = require('./sources/mangaswat');
-const TeamXScraper = require('./sources/teamx');
-const AzoraScraper = require('./sources/azora');
+import logger from '../utils/logger.js';
+import { AsuraScraper } from './sources/asura.js';
+import { MangaSwatScraper } from './sources/mangaswat.js';
+import { TeamXScraper } from './sources/teamx.js';
+import { AzoraScraper } from './sources/azora.js';
 
 class ScraperManager {
     constructor() {
@@ -69,4 +69,4 @@ class ScraperManager {
     }
 }
 
-module.exports = new ScraperManager();
+export const scraperManager = new ScraperManager();

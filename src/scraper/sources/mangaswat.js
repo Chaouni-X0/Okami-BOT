@@ -1,6 +1,6 @@
-const BaseScraper = require('../baseScraper');
+import { BaseScraper } from '../baseScraper.js';
 
-class MangaSwatScraper extends BaseScraper {
+export class MangaSwatScraper extends BaseScraper {
     constructor() {
         super('MangaSwat', 'https://meshmanga.com');
     }
@@ -64,5 +64,3 @@ class MangaSwatScraper extends BaseScraper {
         return images;
     }
 }
-
-module.exports = MangaSwatScraper;

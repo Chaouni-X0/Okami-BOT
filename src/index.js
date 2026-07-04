@@ -4,7 +4,7 @@ import { ChatService } from './services/chat.service.js';
 import { FacebookPublisher } from './modules/publisher.js';
 import { AutomationService } from './services/automation.service.js';
 import logger from './utils/logger.js';
-import scraperManager from './scraper/scraperManager.js';
+import { scraperManager } from './scraper/scraperManager.js';
 
 // Global Error Handling to prevent crashes
 process.on('uncaughtException', (err) => {
@@ -32,7 +32,7 @@ app.get('/health', (req, res) => {
     res.json({ 
         status: 'online', 
         project: '🐺 Okami Bot', 
-        version: '6.0.0 (Node-Only)',
+        version: '7.0.0 (Node-Only Optimized)',
         uptime: process.uptime(),
         memoryUsage: process.memoryUsage()
     });
@@ -93,10 +93,6 @@ app.post('/webhook', (req, res) => {
 const PORT = process.env.PORT || 8080;
 const server = app.listen(PORT, () => {
     logger.info(`Okami Bot API running on port ${PORT}`);
-
-    if (!config.facebook.accessToken || !config.facebook.pageId) {
-        logger.error('⚠️ FB_ACCESS_TOKEN and/or FB_PAGE_ID not set.');
-    }
 
     // Async init
     setImmediate(async () => {
