@@ -4,6 +4,10 @@ import path from 'path';
 import logger from '../utils/logger.js';
 
 export class MemoryService {
+    /**
+     * Creates or updates a manga record. Always await this call — it's async
+     * and returns the saved Mongoose document (use `._id` or `.id` on the result).
+     */
     static async saveManga(mangaData) {
         try {
             let manga = await Manga.findOne({ slug: mangaData.slug });
@@ -48,6 +52,22 @@ export class MemoryService {
 
     static async getPublishedChapters(mangaId) {
         return await Chapter.find({ manga_id: mangaId, is_published: true }).sort({ chapter_number: 1 });
+    }
+
+    /**
+     * Returns every manga that has at least one published chapter, with a
+     * published-chapter count for each — used for the "عرض لائحة ما تم نشره" command.
+     */
+    static async getAllPublishedManga() {
+        const mangas = await Manga.find().sort({ updated_at: -1 });
+        const list = [];
+        for (const manga of mangas) {
+            const count = await Chapter.countDocuments({ manga_id: manga._id, is_published: true });
+            if (count > 0) {
+                list.push({ title: manga.title, slug: manga.slug, sourceSite: manga.source_site_key, publishedCount: count });
+            }
+        }
+        return list;
     }
 
     static cleanupMangaStorage(mangaSlug) {

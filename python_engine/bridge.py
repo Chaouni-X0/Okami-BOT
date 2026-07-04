@@ -18,10 +18,15 @@ async def get_manager():
     """Initialize and return the ScraperManager with all available scrapers."""
     # Updated to 2026 active URLs and requested sites only
     scrapers = [
-        WPMangaScraper("MangaSwat", "https://meshmanga.com", use_cloudscraper=True),
+        # meshmanga.com renders search results client-side via Next.js JS,
+        # so it needs the full Playwright browser (use_cloudscraper=False).
+        WPMangaScraper("MangaSwat", "https://meshmanga.com", use_cloudscraper=False),
+        # asurascans.com and olympustaff.com return usable static HTML for
+        # search/details, so the lightweight cloudscraper path is enough and
+        # much faster/cheaper than launching a browser for every request.
         WPMangaScraper("Asura", "https://asurascans.com", use_cloudscraper=True),
         WPMangaScraper("TeamX", "https://olympustaff.com", use_cloudscraper=True),
-        AzoraScraper() # Custom scraper for Azora (azorafly.com)
+        AzoraScraper() # Custom scraper for Azora (azorafly.com) - always Playwright, Next.js site
     ]
     return ScraperManager(scrapers)
 

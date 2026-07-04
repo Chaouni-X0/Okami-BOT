@@ -1,6 +1,7 @@
 import scraperEngine from '../modules/scraper.js';
 import { QueueSystem } from '../modules/queue.js';
 import { UserService } from './user.service.js';
+import { MemoryService } from './memory.service.js';
 import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
 import { FacebookPublisher } from '../modules/publisher.js';
@@ -15,6 +16,18 @@ export class ChatService {
     async handleMessage(fbId, message) {
         const text = message.trim();
         const lowerText = text.toLowerCase();
+
+        // Global command, works from any state: "الغاء <slug>" cancels an active publish job.
+        if (text.startsWith('الغاء ') || text.startsWith('إلغاء ')) {
+            const slug = text.split(' ').slice(1).join(' ').trim();
+            const cancelled = QueueSystem.cancelJob(slug);
+            await sendMessage(fbId, {
+                text: cancelled
+                    ? `🛑 تم إرسال طلب إلغاء نشر "${slug}". سيتوقف بعد إنهاء الدفعة الحالية.`
+                    : `⚠️ لا توجد عملية نشر جارية بهذا المعرف: "${slug}"`
+            });
+            return;
+        }
 
         // Check for greeting or reset to restart the session
         if (['مرحبا', 'أهلا', 'start', 'reset', 'خروج', 'أهلا بك'].includes(lowerText)) {
@@ -50,7 +63,7 @@ export class ChatService {
                 case 'AWAITING_PASSWORD':
                     if (text === config.admin.activationKey) {
                         this.sessions.set(fbId, { step: 'DEV_MENU' });
-                        const devMenu = "✅ تم التحقق بنجاح! مرحباً بك أيها المطور.\n\n1️⃣ البحث في جميع المواقع 🔍\n2️⃣ اختيار موقع معين 🌐\n3️⃣ التحقق من حالة النشر 📊\n\nأرسل رقم الخيار:";
+                        const devMenu = "✅ تم التحقق بنجاح! مرحباً بك أيها المطور.\n\n1️⃣ البحث في جميع المواقع 🔍\n2️⃣ اختيار موقع معين 🌐\n3️⃣ عرض لائحة ما تم نشره 📚\n4️⃣ التحقق من حالة النشر 📊\n\nأرسل رقم الخيار:\n\n(لإلغاء عملية نشر جارية في أي وقت أرسل: إلغاء اسم-العمل)";
                         await sendMessage(fbId, { text: devMenu });
                     } else {
                         await sendMessage(fbId, { text: "❌ مفتاح التنشيط خاطئ. حاول مرة أخرى:" });
@@ -67,6 +80,22 @@ export class ChatService {
                         config.sources.forEach((s, i) => menu += `${i + 1}. ${s.name}\n`);
                         await sendMessage(fbId, { text: menu + "\nأرسل رقم الموقع:" });
                     } else if (text === '3') {
+                        try {
+                            const list = await MemoryService.getAllPublishedManga();
+                            if (!list.length) {
+                                await sendMessage(fbId, { text: "📭 لا توجد أي أعمال منشورة بعد." });
+                            } else {
+                                let msg = "📚 الأعمال المنشورة:\n\n";
+                                list.forEach((m, i) => {
+                                    msg += `${i + 1}. ${m.title} — ${m.publishedCount} فصل منشور (${m.sourceSite})\n`;
+                                });
+                                await sendMessage(fbId, { text: msg });
+                            }
+                        } catch (e) {
+                            logger.error(`List published error: ${e.message}`);
+                            await sendMessage(fbId, { text: "❌ تعذر جلب لائحة المنشورات." });
+                        }
+                    } else if (text === '4') {
                         try {
                             const isValid = await FacebookPublisher.validateToken();
                             const statusMsg = isValid ? "✅ نظام النشر يعمل بشكل صحيح والتوكن صالح." : "❌ هناك مشكلة في توكن الفيسبوك. يرجى مراجعة الـ Logs.";
@@ -144,15 +173,29 @@ export class ChatService {
                     const searchResults = state.results;
                     if (idx >= 0 && idx < searchResults.length) {
                         const selected = searchResults[idx];
-                        await sendMessage(fbId, { text: `⏳ جاري جلب فصول "${selected.title}"...` });
+                        await sendMessage(fbId, { text: `⏳ جاري جلب معلومات وفصول "${selected.title}"...` });
                         try {
                             const details = await scraperEngine.getMangaDetails(selected.sourceId, selected.url);
-                            this.sessions.set(fbId, { step: 'SELECTING_CHAPTER', details, sourceId: selected.sourceId });
-                            let chapterMsg = `📖 ${details.title}\n✅ تم العثور على ${details.chapters.length} فصل.\n\nأحدث الفصول:\n`;
-                            details.chapters.slice(0, 10).forEach((ch, i) => {
-                                chapterMsg += `${i + 1}. ${ch.name}\n`;
+                            const mangaSlug = selected.title.toLowerCase()
+                                .replace(/[^a-z0-9\u0600-\u06FF]+/g, '-')
+                                .replace(/^-+|-+$/g, '') || `manga-${Date.now()}`;
+
+                            this.sessions.set(fbId, {
+                                step: 'CONFIRM_PUBLISH',
+                                details,
+                                sourceId: selected.sourceId,
+                                mangaSlug,
+                                mangaUrl: selected.url
                             });
-                            await sendMessage(fbId, { text: chapterMsg + "\nأرسل رقم الفصل للنشر:" });
+
+                            const infoMsg = `📖 ${details.title}\n` +
+                                `🌐 الموقع: ${selected.sourceName || selected.sourceId}\n` +
+                                `🔢 عدد الفصول: ${details.chapters.length}\n` +
+                                `📝 نبذة: ${details.description ? details.description.substring(0, 200) + '...' : 'لا يوجد وصف متاح.'}\n\n` +
+                                `1️⃣ لتأكيد بدء النشر التلقائي (كل الفصول، دفعتين دفعتين)\n` +
+                                `2️⃣ للإلغاء واختيار مانجا أخرى\n` +
+                                `3️⃣ لاختيار فصل واحد فقط للنشر يدوياً`;
+                            await sendMessage(fbId, { text: infoMsg });
                         } catch (e) {
                             logger.error(`Details fetch error: ${e.message}`);
                             await sendMessage(fbId, { text: "❌ حدث خطأ في جلب تفاصيل العمل. تأكد من أن الموقع يعمل." });
@@ -163,19 +206,70 @@ export class ChatService {
                     }
                     break;
 
+                case 'CONFIRM_PUBLISH': {
+                    const details = state.details;
+                    if (text === '1') {
+                        try {
+                            const savedManga = await MemoryService.saveManga({
+                                title: details.title,
+                                slug: state.mangaSlug,
+                                coverUrl: details.coverUrl,
+                                status: details.status,
+                                sourceSite: state.sourceId,
+                                sourceUrl: state.mangaUrl
+                            });
+                            const mangaId = savedManga._id;
+
+                            await sendMessage(fbId, { text: `👍 تم التأكيد. بدأ النشر التلقائي لـ "${details.title}" في الخلفية...\n(يمكنك إلغاؤه لاحقاً بإرسال: إلغاء ${state.mangaSlug})` });
+                            this.sessions.set(fbId, { step: 'DEV_MENU' });
+
+                            const baseMessage = `╭━━━〔 🔥 فصل جديد 🔥 〕━━━╮\n📖 اسم العمل: ❪ ${details.title} ❫\n📌 الفصل: ❪ {chapter} ❫\n╰━━━━━━━━━━━━━━━╯\n\n🔥 لا تنسوا المتابعة ليصلكم كل جديد\n💬 شاركونا رأيكم 👇`;
+
+                            // Fire-and-forget: runs in the background, progress comes via sendMessage.
+                            QueueSystem.startMangaPublishing({
+                                mangaId,
+                                mangaTitle: details.title,
+                                mangaSlug: state.mangaSlug,
+                                chapters: details.chapters,
+                                sourceId: state.sourceId,
+                                adminFbId: fbId,
+                                baseMessage
+                            });
+                        } catch (e) {
+                            logger.error(`Confirm publish error: ${e.message}`);
+                            await sendMessage(fbId, { text: `❌ تعذر بدء النشر: ${e.message}` });
+                            this.sessions.set(fbId, { step: 'DEV_MENU' });
+                        }
+                    } else if (text === '2') {
+                        this.sessions.set(fbId, { step: 'AWAITING_SEARCH_QUERY', sourceId: state.sourceId });
+                        await sendMessage(fbId, { text: "🔄 تم الإلغاء. أرسل اسم مانجا أخرى للبحث عنها:" });
+                    } else if (text === '3') {
+                        this.sessions.set(fbId, { step: 'SELECTING_CHAPTER', details, sourceId: state.sourceId, mangaSlug: state.mangaSlug });
+                        let chapterMsg = `📖 ${details.title}\n✅ تم العثور على ${details.chapters.length} فصل.\n\nأحدث الفصول:\n`;
+                        details.chapters.slice(0, 10).forEach((ch, i) => {
+                            chapterMsg += `${i + 1}. ${ch.name}\n`;
+                        });
+                        await sendMessage(fbId, { text: chapterMsg + "\nأرسل رقم الفصل للنشر:" });
+                    } else {
+                        await sendMessage(fbId, { text: "❌ من فضلك أرسل 1 للتأكيد، 2 للإلغاء، أو 3 للنشر اليدوي لفصل واحد." });
+                    }
+                    break;
+                }
+
                 case 'SELECTING_CHAPTER':
                     const chIdx = parseInt(text) - 1;
                     const mangaDetails = state.details;
                     if (chIdx >= 0 && chIdx < mangaDetails.chapters.length) {
                         const chapter = mangaDetails.chapters[chIdx];
                         
-                        const postMessage = `╭━━━〔 🔥 فصل جديد 🔥 〕━━━╮\n📖 اسم العمل: ❪ ${mangaDetails.title} ❫\n📌 الفصل: ❪ ${chapter.name} ❫\n╰━━━━━━━━━━━━━━━╯\n\n📝 نبذة:\n${mangaDetails.description ? mangaDetails.description.substring(0, 200) + '...' : 'لا يوجد وصف متاح.'}\n\n📥 قراءة مباشرة:\n🔗 ${chapter.url}\n\n━━━━━━━━━━━━━━━\n🔥 لا تنسوا المتابعة ليصلكم كل جديد\n💬 شاركونا رأيكم 👇`;
+                        const postMessage = `╭━━━〔 🔥 فصل جديد 🔥 〕━━━╮\n📖 اسم العمل: ❪ ${mangaDetails.title} ❫\n📌 الفصل: ❪ ${chapter.name} ❫\n╰━━━━━━━━━━━━━━━╯\n\n📝 نبذة:\n${mangaDetails.description ? mangaDetails.description.substring(0, 200) + '...' : 'لا يوجد وصف متاح.'}\n\n━━━━━━━━━━━━━━━\n🔥 لا تنسوا المتابعة ليصلكم كل جديد\n💬 شاركونا رأيكم 👇`;
 
-                        await sendMessage(fbId, { text: `🚀 جاري العمل على جلب وتحميل صور "${chapter.name}" من "${mangaDetails.title}"...\nسيتم إرسال تنبيه لك فور الانتهاء من النشر على فيسبوك. 🐺🔥` });
+                        await sendMessage(fbId, { text: `🚀 جاري العمل على جلب وتحميل وتقسيم صور "${chapter.name}" من "${mangaDetails.title}"...\nسيتم إرسال تنبيه لك فور الانتهاء من النشر على فيسبوك. 🐺🔥` });
 
                         QueueSystem.addChapterToQueue({
                             mangaTitle: mangaDetails.title,
                             chapterName: chapter.name,
+                            chapterNumber: chIdx + 1,
                             chapterUrl: chapter.url,
                             sourceKey: state.sourceId,
                             adminFbId: fbId,

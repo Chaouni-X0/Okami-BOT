@@ -6,8 +6,11 @@ const DATA_DIR = process.env.DATA_DIR || './data';
 
 export const config = {
     facebook: {
-        accessToken: process.env.FB_ACCESS_TOKEN || 'EAAVfEISz5KkBRZBWnJrC3EZCbuIISxhIZAx6hsX2wzaZC7U2ob94pdufWJeeogfkKsbnzE5w5ecBWc9YuqFihNEDNNXHTMxZBNyNgmKvRmxZBDyMMWVZBfIS1RqA1ejkKYleuZCzY4FZAZBwTIoWLuDeEbnNEjmyaUJZC98kvKXW4r8ITP8uAWEUGMafuhoGeqZA8ZCdBwoFp9qoq',
-        pageId: process.env.FB_PAGE_ID || '1211757672016850',
+        // SECURITY: never hardcode real tokens here. These must come from
+        // Railway/host environment variables only. If missing, the bot will
+        // fail loudly at startup instead of silently using a stale/leaked token.
+        accessToken: process.env.FB_ACCESS_TOKEN || '',
+        pageId: process.env.FB_PAGE_ID || '',
         appSecret: process.env.FB_APP_SECRET,
         verifyToken: process.env.FB_VERIFY_TOKEN || 'okami_verify_token'
     },

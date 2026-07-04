@@ -1,5 +1,6 @@
 import db from '../database/db.js';
 import logger from '../utils/logger.js';
+import { EventService } from './event.service.js';
 
 export class GamificationService {
     static getRankTitle(level) {
@@ -18,7 +19,6 @@ export class GamificationService {
             user = { fb_id: fbId, points: pointsGain, xp: xpGain, level: 1 };
         } else {
             // التحقق من الفعاليات النشطة (مثل مضاعفة النقاط)
-            import { EventService } from './event.service.js';
             const activeEvent = EventService.getActiveEvent();
             let finalPoints = pointsGain;
             if (activeEvent && activeEvent.type === 'DOUBLE_POINTS') {

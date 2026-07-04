@@ -1,10 +1,17 @@
 import PQueue from 'p-queue';
 import logger from '../utils/logger.js';
 import scraperEngine from './scraper.js';
+import { ChapterProcessor } from './processor.js';
 import { FacebookPublisher } from './publisher.js';
+import { MemoryService } from '../services/memory.service.js';
 import { sendMessage } from '../services/messenger.js';
-import fs from 'fs';
-import path from 'path';
+
+// Number of chapters downloaded, published, and deleted together before
+// moving on to the next group. Keeping this small (2) is what limits how
+// much disk space the bot ever uses at once for a single manga run.
+const PUBLISH_BATCH_SIZE = 2;
+// Pause between batches so we don't hammer Facebook's API or the source site.
+const BATCH_DELAY_MS = 4000;
 
 class QueueSystemClass {
     constructor() {
@@ -16,40 +23,169 @@ class QueueSystemClass {
         this.consecutiveFailures = 0;
         this.FAILURE_THRESHOLD = 3;
         this.isPaused = false;
+        this.processor = new ChapterProcessor();
+        // Tracks manga slugs currently being auto-published, so a duplicate
+        // "confirm" can't start a second parallel run on the same title,
+        // and so admins can ask "ما هو الوضع؟" style status/cancel commands.
+        this.activeJobs = new Map(); // mangaSlug -> { cancelled: boolean, mangaTitle }
     }
 
+    isJobActive(mangaSlug) {
+        return this.activeJobs.has(mangaSlug);
+    }
+
+    cancelJob(mangaSlug) {
+        const job = this.activeJobs.get(mangaSlug);
+        if (job) {
+            job.cancelled = true;
+            return true;
+        }
+        return false;
+    }
+
+    async _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Downloads, splits (for Facebook's height/quality constraints), publishes,
+     * and cleans up ALL chapters of a manga, two at a time, so at most
+     * PUBLISH_BATCH_SIZE chapters worth of images ever sit on disk together.
+     */
+    async startMangaPublishing({ mangaId, mangaTitle, mangaSlug, chapters, sourceId, adminFbId, baseMessage }) {
+        if (this.isJobActive(mangaSlug)) {
+            await sendMessage(adminFbId, { text: `⚠️ يوجد بالفعل عملية نشر جارية لـ "${mangaTitle}".` });
+            return;
+        }
+
+        const job = { cancelled: false, mangaTitle };
+        this.activeJobs.set(mangaSlug, job);
+
+        try {
+            // Skip chapters already published previously, so re-confirming
+            // the same manga doesn't repost old chapters.
+            const alreadyPublished = new Set(
+                (await MemoryService.getPublishedChapters(mangaId)).map(c => c.chapter_number)
+            );
+            const pending = chapters.filter(ch => !alreadyPublished.has(ch.number));
+
+            if (pending.length === 0) {
+                await sendMessage(adminFbId, { text: `ℹ️ كل فصول "${mangaTitle}" منشورة مسبقاً.` });
+                return;
+            }
+
+            await sendMessage(adminFbId, {
+                text: `🚀 بدأ النشر التلقائي لـ "${mangaTitle}"\n📦 سيتم تنزيل ونشر الفصول على دفعات من ${PUBLISH_BATCH_SIZE} لتفادي أي مشاكل تخزين.\n🔢 عدد الفصول المتبقية: ${pending.length}`
+            });
+
+            for (let i = 0; i < pending.length; i += PUBLISH_BATCH_SIZE) {
+                if (job.cancelled) {
+                    await sendMessage(adminFbId, { text: `🛑 تم إلغاء نشر "${mangaTitle}" بعد نشر ${i} فصل.` });
+                    break;
+                }
+
+                const batch = pending.slice(i, i + PUBLISH_BATCH_SIZE);
+                const prepared = [];
+
+                // 1) Download + slice images locally for every chapter in this batch.
+                for (const ch of batch) {
+                    try {
+                        const imageUrls = await scraperEngine.parseChapterImages(sourceId, ch.url);
+                        if (!imageUrls || imageUrls.length === 0) {
+                            throw new Error('لم يتم العثور على صور لهذا الفصل.');
+                        }
+                        const { chapterDir, images } = await this.processor.processChapter(mangaSlug, ch.number, imageUrls);
+                        if (!images || images.length === 0) {
+                            throw new Error('فشلت معالجة/تقسيم صور الفصل.');
+                        }
+                        prepared.push({ chapter: ch, chapterDir, images, error: null });
+                    } catch (err) {
+                        logger.error(`[Queue] Prepare failed for ${mangaTitle} ${ch.name}: ${err.message}`);
+                        prepared.push({ chapter: ch, chapterDir: null, images: null, error: err.message });
+                    }
+                }
+
+                // 2) Publish each successfully-prepared chapter in this batch.
+                for (const item of prepared) {
+                    if (item.error) {
+                        this.registerFailure();
+                        await sendMessage(adminFbId, { text: `❌ فشل تحضير "${mangaTitle} - ${item.chapter.name}"\nالسبب: ${item.error}` });
+                        continue;
+                    }
+                    try {
+                        const message = baseMessage
+                            ? baseMessage.replace('{chapter}', item.chapter.name)
+                            : `📖 ${mangaTitle}\n📌 الفصل: ${item.chapter.name}`;
+                        const postId = await FacebookPublisher.publishChapter(item.images, message);
+                        await MemoryService.markChapterAsPublished(mangaId, item.chapter.number, postId);
+                        await sendMessage(adminFbId, {
+                            text: `✅ تم نشر "${mangaTitle} - ${item.chapter.name}"\n🔗 https://facebook.com/${postId}`
+                        });
+                        this.registerSuccess();
+                    } catch (err) {
+                        this.registerFailure();
+                        logger.error(`[Queue] Publish failed for ${mangaTitle} ${item.chapter.name}: ${err.message}`);
+                        await sendMessage(adminFbId, { text: `❌ فشل نشر "${mangaTitle} - ${item.chapter.name}"\nالسبب: ${err.message}` });
+                    }
+                }
+
+                // 3) Delete every chapter directory in this batch, published or not,
+                // so nothing lingers on disk before the next batch starts.
+                for (const item of prepared) {
+                    if (item.chapterDir) this.processor.cleanup(item.chapterDir);
+                }
+
+                // Respect a global pause if too many consecutive failures happened.
+                while (this.isPaused) {
+                    await this._sleep(2000);
+                }
+
+                if (i + PUBLISH_BATCH_SIZE < pending.length) {
+                    await this._sleep(BATCH_DELAY_MS);
+                }
+            }
+
+            if (!job.cancelled) {
+                await sendMessage(adminFbId, { text: `🎉 انتهى نشر جميع فصول "${mangaTitle}".` });
+            }
+        } catch (error) {
+            logger.error(`[Queue] startMangaPublishing fatal error: ${error.message}`);
+            await sendMessage(adminFbId, { text: `❌ توقفت عملية نشر "${mangaTitle}" بسبب خطأ غير متوقع: ${error.message}` });
+        } finally {
+            this.activeJobs.delete(mangaSlug);
+        }
+    }
+
+    /**
+     * Publish a single, specific chapter on demand (kept for manual/one-off use).
+     */
     async addChapterToQueue(task) {
         return this.messageQueue.add(async () => {
             try {
-                logger.info(`[Queue] Processing with Python Engine: ${task.mangaTitle} - ${task.chapterName}`);
-                
-                // 1. Get and Process Images via Python Bridge
-                const processedImages = await scraperEngine.parseChapterImages(
-                    task.sourceKey, 
-                    task.chapterUrl,
-                    task.mangaTitle,
-                    task.chapterName
-                );
+                logger.info(`[Queue] Processing single chapter: ${task.mangaTitle} - ${task.chapterName}`);
 
-                if (!processedImages || processedImages.length === 0) {
-                    throw new Error("فشل محرك Python في جلب أو معالجة الصور لهذا الفصل.");
+                const imageUrls = await scraperEngine.parseChapterImages(task.sourceKey, task.chapterUrl);
+                if (!imageUrls || imageUrls.length === 0) {
+                    throw new Error("لم يتم العثور على صور لهذا الفصل.");
                 }
 
-                logger.info(`[Queue] Python Engine returned ${processedImages.length} processed parts.`);
+                const mangaSlug = (task.mangaTitle || 'manga').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                const { chapterDir, images } = await this.processor.processChapter(mangaSlug, task.chapterNumber || 0, imageUrls);
+                if (!images || images.length === 0) {
+                    throw new Error("فشلت معالجة/تقسيم صور الفصل.");
+                }
 
-                // 2. Publish to Facebook
-                const postId = await FacebookPublisher.publishChapter(processedImages, task.customMessage);
+                const postId = await FacebookPublisher.publishChapter(images, task.customMessage);
 
-                // 3. Notify Admin
                 if (task.adminFbId) {
                     await sendMessage(task.adminFbId, {
                         text: `✅ تم بنجاح نشر "${task.mangaTitle} - ${task.chapterName}"\n🔗 رابط المنشور: https://facebook.com/${postId}`
                     });
                 }
 
-                // 4. Cleanup (Python engine handles temp files, but we can double check)
+                this.processor.cleanup(chapterDir);
                 this.registerSuccess();
-                
+
             } catch (error) {
                 this.registerFailure();
                 logger.error(`[Queue] Task failed: ${error.message}`);

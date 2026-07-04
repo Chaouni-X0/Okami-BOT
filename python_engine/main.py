@@ -9,7 +9,7 @@ async def main():
     # Initialize scrapers for the requested 4 sites only
     # Updated with 2026 active URLs
     scrapers = [
-        WPMangaScraper("MangaSwat", "https://meshmanga.com", use_cloudscraper=True),
+        WPMangaScraper("MangaSwat", "https://meshmanga.com", use_cloudscraper=False),
         WPMangaScraper("Asura", "https://asurascans.com", use_cloudscraper=True),
         WPMangaScraper("TeamX", "https://olympustaff.com", use_cloudscraper=True),
         AzoraScraper()

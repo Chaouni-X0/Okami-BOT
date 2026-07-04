@@ -81,7 +81,11 @@ app.post('/webhook', (req, res) => {
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
     logger.info(`Okami Bot API running on port ${PORT}`);
-    
+
+    if (!config.facebook.accessToken || !config.facebook.pageId) {
+        logger.error('⚠️ FB_ACCESS_TOKEN و/أو FB_PAGE_ID غير مضبوطين في متغيرات البيئة. النشر على فيسبوك والرد على المستخدمين لن يعمل حتى تضبطهما في إعدادات Railway.');
+    }
+
     // Async init to not block healthcheck
     setImmediate(async () => {
         try {
