@@ -4,10 +4,11 @@
     "builder": "dockerfile"
   },
   "deploy": {
-    "startCommand": "npm start",
+    "startCommand": "pnpm start",
     "healthcheckPath": "/health",
-    "healthcheckTimeout": 600,
-    "initialDelay": 30,
-    "restartPolicyType": "ON_FAILURE"
+    "healthcheckTimeout": 300,
+    "initialDelay": 15,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
   }
 }

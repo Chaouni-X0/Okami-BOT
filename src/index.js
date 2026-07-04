@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { config } from './config/config.js';
 import { ChatService } from './services/chat.service.js';
 import { FacebookPublisher } from './modules/publisher.js';
@@ -34,7 +35,8 @@ app.get('/health', (req, res) => {
         project: '🐺 Okami Bot', 
         version: '7.0.0 (Node-Only Optimized)',
         uptime: process.uptime(),
-        memoryUsage: process.memoryUsage()
+        memoryUsage: process.memoryUsage(),
+        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
     });
 });
 
@@ -109,6 +111,7 @@ const server = app.listen(PORT, () => {
 process.on('SIGTERM', async () => {
     logger.info('SIGTERM received. Shutting down gracefully...');
     await scraperManager.closeAll();
+    await mongoose.connection.close();
     server.close(() => {
         logger.info('Process terminated.');
         process.exit(0);
