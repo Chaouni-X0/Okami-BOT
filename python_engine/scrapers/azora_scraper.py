@@ -1,5 +1,4 @@
-from typing import List, Dict, Any, Optional
-from urllib.parse import quote
+from typing import List, Dict, Any
 try:
     from core.base_scraper import BaseScraper
     from utils.logger import logger
@@ -9,100 +8,64 @@ except ImportError:
 
 class AzoraScraper(BaseScraper):
     def __init__(self):
-        super().__init__("Azora", "https://azorafly.com", use_cloudscraper=True)
+        super().__init__(source_name="Azora", base_url="https://azorafly.com")
 
     async def search(self, query: str) -> List[Dict[str, Any]]:
-        # Azora search uses /series?title=query
-        url = f"{self.base_url}/series?title={quote(query)}"
-        logger.info(f"[AzoraScraper] Searching: {url}")
-        soup = await self.fetch_html(url)
-        if not soup: return []
+        # Azora is a Next.js site, Playwright is essential here
+        search_url = f"{self.base_url}/search?q={query.replace(' ', '+')}"
+        
+        soup = await self.fetch_html(search_url, wait_selector=".series-card, a[href*='/series/']")
         
         results = []
-        # Azora often uses specific card structures
-        items = soup.select('a[href^="/series/"]') or \
-                soup.select('.series-card a') or \
-                soup.select('.manga-item a')
-                
-        seen_urls = set()
+        if not soup: return results
+        
+        items = soup.select('.series-card a, a[href*="/series/"]')
         for item in items:
-            href = item.get('href')
-            if not href or href == '/series/': continue
-            
-            manga_url = href
-            if not manga_url.startswith('http'):
-                manga_url = self.base_url.rstrip('/') + manga_url
-            
-            # Ensure it's a series link, not a chapter link
-            if "/series/" not in manga_url: continue
-            
-            if manga_url in seen_urls: continue
-            seen_urls.add(manga_url)
-            
-            title = item.get('title') or item.text.strip()
-            # If title is empty, try to get it from child elements or alt text
-            if not title:
-                title_el = item.select_one('h3, .title, .name')
-                title = title_el.text.strip() if title_el else ""
-            
-            if not title:
-                img = item.select_one('img')
-                title = img.get('alt', '').strip() if img else ""
-            
-            if title:
-                # Filtering fix: Ensure title matches query
-                query_words = query.lower().split()
-                if any(word in title.lower() for word in query_words):
+            url = item.get('href')
+            if url and '/series/' in url:
+                if not url.startswith('http'): url = self.base_url.rstrip('/') + url
+                title = item.text.strip()
+                if query.lower() in title.lower():
                     results.append({
                         'title': title,
-                        'url': manga_url,
+                        'url': url,
                         'source': self.source_name
                     })
         return results
 
     async def get_manga_info(self, url: str) -> Dict[str, Any]:
-        soup = await self.fetch_html(url)
+        soup = await self.fetch_html(url, wait_selector="h1")
         if not soup: return {}
         
-        title = soup.select_one('h1').text.strip() if soup.select_one('h1') else ""
-        cover = ""
-        img_tag = soup.select_one('img[src*="storage.azorafly.com"]')
-        if img_tag:
-            cover = img_tag.get('src')
-            
-        desc = ""
-        desc_tag = soup.select_one('.description') or soup.select_one('p')
-        if desc_tag:
-            desc = desc_tag.text.strip()
-            
         return {
-            'title': title,
-            'cover': cover,
-            'description': desc,
+            'title': soup.select_one('h1').text.strip() if soup.select_one('h1') else "Unknown",
+            'cover': soup.select_one('img[src*="poster"]').get('src') if soup.select_one('img[src*="poster"]') else "",
+            'description': soup.select_one('.description').text.strip() if soup.select_one('.description') else "",
             'source': self.source_name
         }
 
     async def get_chapters(self, url: str) -> List[Dict[str, Any]]:
-        soup = await self.fetch_html(url)
+        soup = await self.fetch_html(url, wait_selector="a[href*='/chapter-']")
         if not soup: return []
         
         chapters = []
-        # Azora chapter links usually contain '/chapter/'
-        for ch in soup.select('a[href*="/chapter/"]'):
+        for ch in soup.select("a[href*='/chapter-']"):
+            href = ch.get('href')
+            if not href.startswith('http'): href = self.base_url.rstrip('/') + href
             chapters.append({
                 'name': ch.text.strip(),
-                'url': self.base_url.rstrip('/') + ch.get('href') if not ch.get('href').startswith('http') else ch.get('href')
+                'url': href
             })
         return chapters
 
     async def get_chapter_images(self, chapter_url: str) -> List[str]:
-        soup = await self.fetch_html(chapter_url)
+        soup = await self.fetch_html(chapter_url, wait_selector="img[src*='chapter']")
         if not soup: return []
         
         images = []
-        # Next.js / React sites often store images in a JSON state or specific div
-        for img in soup.select('img[src*="storage.azorafly.com"]'):
-            src = img.get('src')
+        for img in soup.select("img[src*='chapter']"):
+            src = img.get('src') or img.get('data-src')
             if src:
-                images.append(src)
+                if not src.startswith('http'): src = 'https:' + src if src.startswith('//') else src
+                images.append(src.strip())
         return images

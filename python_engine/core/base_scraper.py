@@ -1,77 +1,68 @@
 import abc
 import asyncio
-import aiohttp
 import random
-import cloudscraper
 import time
 from typing import List, Dict, Any, Optional
 from utils.logger import logger
-
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    import BeautifulSoup
+from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
+from bs4 import BeautifulSoup
 
 class BaseScraper(abc.ABC):
-    def __init__(self, source_name: str, base_url: str, use_cloudscraper: bool = False):
+    def __init__(self, source_name: str, base_url: str):
         self.source_name = source_name
         self.base_url = base_url
-        self.use_cloudscraper = use_cloudscraper
+        self.playwright = None
+        self.browser = None
+        self.context = None
         self.user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         ]
-        self._session = None
 
-    async def get_session(self):
-        if self._session is None:
-            if self.use_cloudscraper:
-                self._session = cloudscraper.create_scraper()
+    async def _init_browser(self):
+        if not self.browser:
+            self.playwright = await async_playwright().start()
+            self.browser = await self.playwright.chromium.launch(headless=True)
+            self.context = await self.browser.new_context(
+                user_agent=random.choice(self.user_agents),
+                viewport={'width': 1280, 'height': 720}
+            )
+            logger.info(f"[{self.source_name}] Playwright browser initialized.")
+
+    async def fetch_page_content(self, url: str, wait_selector: Optional[str] = None, timeout: int = 30000) -> Optional[str]:
+        """Fetch page content using Playwright to handle JS and Cloudflare."""
+        await self._init_browser()
+        page = await self.context.new_page()
+        await stealth_async(page)
+        
+        try:
+            logger.info(f"[{self.source_name}] Navigating to: {url}")
+            # Use 'domcontentloaded' for faster response if wait_selector is provided
+            await page.goto(url, wait_until='domcontentloaded', timeout=timeout)
+            
+            # Handle Cloudflare / Wait for content
+            if wait_selector:
+                try:
+                    await page.wait_for_selector(wait_selector, timeout=10000)
+                except:
+                    logger.warning(f"[{self.source_name}] Timeout waiting for selector: {wait_selector}")
             else:
-                self._session = aiohttp.ClientSession()
-        return self._session
+                # Basic wait if no selector
+                await asyncio.sleep(2)
+            
+            content = await page.content()
+            return content
+        except Exception as e:
+            logger.error(f"[{self.source_name}] Playwright error fetching {url}: {str(e)}")
+            return None
+        finally:
+            await page.close()
 
-    async def fetch_html(self, url: str, method: str = 'GET', retries: int = 2, timeout: int = 15, **kwargs) -> Optional[BeautifulSoup]:
-        headers = kwargs.pop('headers', {})
-        if 'User-Agent' not in headers:
-            headers['User-Agent'] = random.choice(self.user_agents)
-        headers['Referer'] = url if url.startswith(self.base_url) else self.base_url
-        
-        session = await self.get_session()
-        
-        for attempt in range(retries):
-            try:
-                # First attempt uses shorter timeout
-                current_timeout = 5 if attempt == 0 else timeout
-                
-                if self.use_cloudscraper:
-                    loop = asyncio.get_event_loop()
-                    def _request():
-                        return session.request(method, url, headers=headers, timeout=current_timeout, **kwargs)
-                    
-                    response = await loop.run_in_executor(None, _request)
-                    
-                    if response.status_code == 404:
-                        logger.warning(f"[Scraper] 404 Not Found for {url} - Skipping retries.")
-                        return None
-                        
-                    response.raise_for_status()
-                    return BeautifulSoup(response.text, 'html.parser')
-                else:
-                    async with session.request(method, url, headers=headers, timeout=current_timeout, **kwargs) as response:
-                        if response.status == 404:
-                            logger.warning(f"[Scraper] 404 Not Found for {url} - Skipping retries.")
-                            return None
-                        
-                        response.raise_for_status()
-                        html = await response.text()
-                        return BeautifulSoup(html, 'html.parser')
-                        
-            except Exception as e:
-                logger.error(f"Attempt {attempt + 1} failed for {url}: {str(e)}")
-                if attempt < retries - 1:
-                    await asyncio.sleep(1)
+    async def fetch_html(self, url: str, wait_selector: Optional[str] = None) -> Optional[BeautifulSoup]:
+        content = await self.fetch_page_content(url, wait_selector)
+        if content:
+            return BeautifulSoup(content, 'html.parser')
         return None
 
     @abc.abstractmethod
@@ -91,9 +82,10 @@ class BaseScraper(abc.ABC):
         pass
 
     async def close(self):
-        if self._session:
-            if not self.use_cloudscraper:
-                await self._session.close()
-            else:
-                self._session.close()
-            self._session = None
+        if self.browser:
+            await self.browser.close()
+        if self.playwright:
+            await self.playwright.stop()
+        self.browser = None
+        self.playwright = None
+        logger.info(f"[{self.source_name}] Playwright browser closed.")

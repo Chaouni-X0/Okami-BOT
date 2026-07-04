@@ -1,4 +1,3 @@
-import json
 from typing import List, Dict, Any
 try:
     from core.base_scraper import BaseScraper
@@ -8,63 +7,63 @@ except ImportError:
     from ..utils.logger import logger
 
 class AsuraScraper(BaseScraper):
-    """Highly optimized scraper for Asura Scans using their internal API."""
-    
     def __init__(self):
-        super().__init__(
-            source_name="Asura", 
-            base_url="https://asurascans.com",
-            use_cloudscraper=True
-        )
-        self.api_url = "https://gg.asurascans.com/api/v1" # Based on recent Toraka/Astro implementation
+        super().__init__(source_name="Asura", base_url="https://asurascans.com")
 
     async def search(self, query: str) -> List[Dict[str, Any]]:
-        # Asura now uses a specialized search endpoint or GraphQL
-        # We will try the most common JSON endpoint used by their new Toraka engine
-        search_url = f"{self.api_url}/search?q={query.replace(' ', '+')}"
-        logger.info(f"[Asura] API Search: {search_url}")
+        # Asura search often uses JS rendering for the results grid
+        search_url = f"{self.base_url}/?s={query.replace(' ', '+')}&post_type=wp-manga"
+        
+        # Wait for the manga items to appear
+        soup = await self.fetch_html(search_url, wait_selector=".c-tabs-item__content, .post-title")
         
         results = []
-        try:
-            session = await self.get_session()
-            headers = {
-                'Origin': 'https://asurascans.com',
-                'Referer': 'https://asurascans.com/',
-                'Accept': 'application/json'
-            }
-            
-            # Using cloudscraper for API requests too
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: session.get(search_url, headers=headers, timeout=10))
-            
-            if response.status_code == 200:
-                data = response.json()
-                # The new API structure usually returns a 'data' or 'results' list
-                items = data.get('data', []) or data.get('results', []) or data
-                
-                for item in items:
-                    title = item.get('name') or item.get('title')
-                    slug = item.get('slug')
-                    if title and slug:
-                        results.append({
-                            'title': title,
-                            'url': f"{self.base_url}/comics/{slug}",
-                            'source': self.source_name
-                        })
-            else:
-                logger.error(f"[Asura] API failed with status {response.status_code}")
-                # Fallback to browser-like search if API fails
-        except Exception as e:
-            logger.error(f"[Asura] API Error: {str(e)}")
-            
+        if not soup: return results
+        
+        items = soup.select('.c-tabs-item__content') or soup.select('.post-title a')
+        for item in items:
+            link = item.select_one('a') if not item.name == 'a' else item
+            if link and link.get('href'):
+                title = link.text.strip()
+                url = link.get('href')
+                if query.lower() in title.lower():
+                    results.append({
+                        'title': title,
+                        'url': url,
+                        'source': self.source_name
+                    })
         return results
 
     async def get_manga_info(self, url: str) -> Dict[str, Any]:
-        # Implementation for manga info via API or HTML
-        return {}
+        soup = await self.fetch_html(url, wait_selector="h1")
+        if not soup: return {}
+        
+        return {
+            'title': soup.select_one('h1').text.strip() if soup.select_one('h1') else "Unknown",
+            'cover': soup.select_one('.summary_image img').get('src') if soup.select_one('.summary_image img') else "",
+            'description': soup.select_one('.description-summary').text.strip() if soup.select_one('.description-summary') else "",
+            'source': self.source_name
+        }
 
     async def get_chapters(self, url: str) -> List[Dict[str, Any]]:
-        return []
+        soup = await self.fetch_html(url, wait_selector=".wp-manga-chapter")
+        if not soup: return []
+        
+        chapters = []
+        for ch in soup.select('.wp-manga-chapter a'):
+            chapters.append({
+                'name': ch.text.strip(),
+                'url': ch.get('href')
+            })
+        return chapters
 
     async def get_chapter_images(self, chapter_url: str) -> List[str]:
-        return []
+        soup = await self.fetch_html(chapter_url, wait_selector=".reading-content img")
+        if not soup: return []
+        
+        images = []
+        for img in soup.select('.reading-content img'):
+            src = img.get('src') or img.get('data-src')
+            if src and not any(x in src.lower() for x in ["logo", "banner"]):
+                images.append(src.strip())
+        return images
