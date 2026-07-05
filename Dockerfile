@@ -1,10 +1,10 @@
-# Use the official Playwright image which includes browser dependencies
+# Use the official Playwright image
 FROM mcr.microsoft.com/playwright:v1.61.1-jammy
 
 # Set working directory
 WORKDIR /app
 
-# Install build tools for native modules like better-sqlite3
+# Install essential build tools
 RUN apt-get update && apt-get install -y \
     build-essential \
     python3 \
@@ -12,17 +12,19 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# IMPORTANT: Enable C++20 for node-gyp to build better-sqlite3 on Node 24+
+ENV CXXFLAGS="-std=c++20"
+
 # Copy package files
 COPY package.json ./
 
-# Remove lock files to avoid conflicts, use npm for standard build
+# Remove existing lock files to ensure a clean install with npm
 RUN rm -f pnpm-lock.yaml package-lock.json
 
 # Install dependencies
-# We use --unsafe-perm to allow postinstall scripts for native modules
-RUN npm install --unsafe-perm
+RUN npm install
 
-# Install Playwright browsers explicitly to be sure
+# Install Playwright browsers
 RUN npx playwright install chromium --with-deps
 
 # Copy the rest of the application
