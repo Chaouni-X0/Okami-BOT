@@ -1,28 +1,28 @@
-# Use Playwright official image with matching version
+# Use the official Playwright image which has all dependencies pre-installed
 FROM mcr.microsoft.com/playwright:v1.61.1-jammy
 
 # Set working directory
 WORKDIR /app
 
-# Explicitly install pnpm v9 to avoid v10's strict build blocking
-RUN npm install -g pnpm@9.15.4
+# Copy package files
+COPY package.json ./
 
-# Copy package files AND .npmrc first for caching
-COPY package.json pnpm-lock.yaml* .npmrc ./
+# Remove pnpm-lock if exists to avoid confusion, use npm for maximum compatibility on Railway
+RUN rm -f pnpm-lock.yaml
 
-# Install Node dependencies
-RUN pnpm install --frozen-lockfile
+# Install dependencies using npm (Standard and reliable)
+# We use --unsafe-perm to allow postinstall scripts for root
+RUN npm install
 
 # Copy the rest of the application
 COPY . .
 
-# Set environment variables
+# Environment variables
 ENV NODE_ENV=production
 ENV PORT=8080
-ENV PLAYWRIGHT_BROWSERS_PATH=0 
 
 # Expose port
 EXPOSE 8080
 
-# Start the application
-CMD ["pnpm", "start"]
+# Start command
+CMD ["npm", "start"]
