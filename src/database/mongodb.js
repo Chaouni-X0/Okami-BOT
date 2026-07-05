@@ -4,24 +4,42 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/okami';
+const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
 
 export const connectDB = async () => {
+    if (!MONGODB_URI) {
+        logger.error('[CRITICAL] MONGODB_URI is missing in environment variables!');
+        process.exit(1);
+    }
+
     try {
         logger.info('Attempting to connect to MongoDB...');
+        
+        // Disable buffering to prevent "buffering timed out" errors
+        mongoose.set('bufferCommands', false);
+
         await mongoose.connect(MONGODB_URI, {
-            maxPoolSize: 10,
-            serverSelectionTimeoutMS: 10000,
+            serverSelectionTimeoutMS: 10000, // 10 seconds to find the server
             socketTimeoutMS: 45000,
             family: 4
         });
-        logger.info('Successfully connected to MongoDB.');
+
+        logger.info('✅ Successfully connected to MongoDB.');
     } catch (error) {
-        logger.error(`[CRITICAL] MongoDB connection error: ${error.message}`);
-        // DO NOT exit(1) immediately to allow health checks to pass
-        logger.warn('Continuing without database connection. Some features may be unavailable.');
+        logger.error(`❌ MongoDB Connection Failed: ${error.message}`);
+        // Exit process if DB connection fails - prevent inconsistent state
+        process.exit(1);
     }
 };
+
+// Monitor Connection Status
+mongoose.connection.on('error', (err) => {
+    logger.error(`❌ MongoDB Runtime Error: ${err.message}`);
+});
+
+mongoose.connection.on('disconnected', () => {
+    logger.warn('⚠️ MongoDB disconnected. Attempting to reconnect...');
+});
 
 // User Schema
 const userSchema = new mongoose.Schema({

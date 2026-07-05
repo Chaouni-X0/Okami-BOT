@@ -1,124 +1,70 @@
 import express from 'express';
-import mongoose from 'mongoose';
-import { config } from './config/config.js';
-import { ChatService } from './services/chat.service.js';
-import { FacebookPublisher } from './modules/publisher.js';
-import { AutomationService } from './services/automation.service.js';
+import dotenv from 'dotenv';
+import cors from 'cors';
 import logger from './utils/logger.js';
-import { scraperManager } from './scraper/scraperManager.js';
+import { connectDB } from './database/mongodb.js';
+import automationService from './services/automationService.js';
+import scraperRoutes from './routes/scraperRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
-// Global Error Handling to prevent crashes
-process.on('uncaughtException', (err) => {
-    logger.error(`[CRITICAL] Uncaught Exception: ${err.message}`);
-    logger.error(err.stack);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    logger.error(`[CRITICAL] Unhandled Rejection at: ${promise}, reason: ${reason}`);
-});
-
-const chatService = new ChatService();
-const automationService = new AutomationService();
+dotenv.config();
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
-// Root route
-app.get('/', (req, res) => {
-    res.status(200).json({ status: 'ok', message: '🐺 Okami Bot is alive!' });
-});
-
-// Production-ready Health Check
+// Health Check Endpoint (Immediate response)
 app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'online', 
-        project: '🐺 Okami Bot', 
-        version: '7.0.0 (Node-Only Optimized)',
-        uptime: process.uptime(),
-        memoryUsage: process.memoryUsage(),
-        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
-    });
+    res.status(200).json({ status: 'ok', timestamp: new Date() });
 });
 
-// Webhook GET for verification
-app.get('/webhook', (req, res) => {
-    const mode = req.query['hub.mode'];
-    const token = req.query['hub.verify_token'];
-    const challenge = req.query['hub.challenge'];
-
-    if (mode === 'subscribe' && token === config.facebook.verifyToken) {
-        logger.info('Webhook verified successfully.');
-        res.status(200).send(challenge);
-    } else {
-        logger.warn('Webhook verification failed. Token mismatch.');
-        res.sendStatus(403);
-    }
-});
-
-// Webhook POST for receiving messages
-app.post('/webhook', (req, res) => {
-    const body = req.body;
-
-    if (body.object === 'page') {
-        res.status(200).send('EVENT_RECEIVED');
-
-        body.entry.forEach(entry => {
-            if (entry.messaging) {
-                entry.messaging.forEach(event => {
-                    if (event.message && event.message.text) {
-                        setImmediate(async () => {
-                            try {
-                                const sender_id = event.sender.id;
-                                const text = event.message.text;
-                                logger.info(`Processing message from ${sender_id}: ${text}`);
-                                const responseText = await chatService.handleMessage(sender_id, text);
-                                if (responseText) {
-                                    if (typeof responseText === 'string') {
-                                        await FacebookPublisher.sendDirectMessage(sender_id, { text: responseText });
-                                    } else {
-                                        await FacebookPublisher.sendDirectMessage(sender_id, responseText);
-                                    }
-                                }
-                            } catch (error) {
-                                logger.error(`Error processing webhook event: ${error.message}`);
-                            }
-                        });
-                    }
-                });
-            }
-        });
-    } else {
-        res.sendStatus(404);
-    }
-});
+// Routes
+app.use('/api/scraper', scraperRoutes);
+app.use('/api/admin', adminRoutes);
 
 const PORT = process.env.PORT || 8080;
-// Increased memory handling
-const server = app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Okami Bot API running on port ${PORT}`);
-});
 
-// Async init outside of server listen to not block healthcheck
-setImmediate(async () => {
+/**
+ * STARTUP SEQUENCE
+ * 1. Connect to MongoDB
+ * 2. Start Express Server
+ * 3. Initialize Background Services
+ */
+const startServer = async () => {
     try {
-        // Connect DB first
-        const { connectDB } = await import('./database/mongodb.js');
+        // Step 1: Strict MongoDB Connection
         await connectDB();
-        
-        await automationService.init();
-        logger.info('Services initialized successfully.');
-    } catch (e) {
-        logger.error(`Failed to init services: ${e.message}`);
-    }
-});
 
-// Graceful Shutdown
-process.on('SIGTERM', async () => {
-    logger.info('SIGTERM received. Shutting down gracefully...');
-    await scraperManager.closeAll();
-    await mongoose.connection.close();
-    server.close(() => {
-        logger.info('Process terminated.');
-        process.exit(0);
-    });
-});
+        // Step 2: Start Express Server only if DB is ready
+        const server = app.listen(PORT, '0.0.0.0', () => {
+            logger.info(`🚀 Okami Bot API is ONLINE on port ${PORT}`);
+        });
+
+        // Step 3: Initialize background services
+        setImmediate(async () => {
+            try {
+                await automationService.init();
+                logger.info('✅ Background Automation Services started.');
+            } catch (e) {
+                logger.error(`⚠️ Automation Service failed to start: ${e.message}`);
+            }
+        });
+
+        // Graceful Shutdown
+        process.on('SIGTERM', () => {
+            logger.info('SIGTERM received. Shutting down gracefully...');
+            server.close(() => {
+                import('mongoose').then(m => m.default.connection.close(false, () => {
+                    logger.info('MongoDB connection closed. Process terminated.');
+                    process.exit(0);
+                }));
+            });
+        });
+
+    } catch (error) {
+        logger.error(`[FATAL] Startup failed: ${error.message}`);
+        process.exit(1);
+    }
+};
+
+startServer();
