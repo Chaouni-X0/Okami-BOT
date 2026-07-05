@@ -11,39 +11,40 @@ export class BaseScraper {
     }
 
     /**
-     * The main entry for fetching pages. 
-     * Tries Playwright first for high fidelity, falls back to Axios for speed/reliability.
+     * Advanced fetchPage with Playwright + Axios Fallback
      */
     async fetchPage(url, options = {}) {
         const { waitSelector = null, useBrowser = true } = options;
 
+        // Try Playwright First
         if (useBrowser) {
             try {
                 return await this.fetchWithBrowser(url, waitSelector);
             } catch (error) {
-                logger.warn(`[${this.sourceName}] Playwright failed, falling back to Axios: ${error.message}`);
+                logger.warn(`[${this.sourceName}] Playwright failed for ${url}, trying Axios fallback... Error: ${error.message}`);
             }
         }
 
-        // Fallback to Axios
+        // Axios Fallback
         try {
-            logger.info(`[${this.sourceName}] Axios Fetch (Fallback): ${url}`);
+            logger.info(`[${this.sourceName}] Axios Fallback Fetch: ${url}`);
             const response = await axios.get(url, {
-                timeout: 15000,
+                timeout: 20000,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
                     'Referer': this.baseUrl
                 }
             });
             return cheerio.load(response.data);
         } catch (error) {
-            logger.error(`[${this.sourceName}] Both Playwright and Axios failed: ${error.message}`);
-            throw error;
+            logger.error(`[${this.sourceName}] Critical: Both Playwright and Axios failed for ${url}. Error: ${error.message}`);
+            throw new Error(`Failed to fetch page: ${url}`);
         }
     }
 
     /**
-     * Legacy support for 'fetch' method if still used
+     * Legacy fetch method support
      */
     async fetch(url, options = {}) {
         return this.fetchPage(url, options);
@@ -55,12 +56,13 @@ export class BaseScraper {
             if (!this.browser) {
                 this.browser = await chromium.launch({
                     headless: true,
-                    args: ['--no-sandbox', '--disable-setuid-sandbox']
+                    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
                 });
             }
             
             context = await this.browser.newContext({
                 userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                viewport: { width: 1280, height: 720 }
             });
 
             const page = await context.newPage();
@@ -70,11 +72,15 @@ export class BaseScraper {
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
             });
 
-            logger.info(`[${this.sourceName}] Playwright Fetch: ${url}`);
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            logger.info(`[${this.sourceName}] Playwright Fetching: ${url}`);
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
             
             if (waitSelector) {
-                await page.waitForSelector(waitSelector, { timeout: 10000 }).catch(() => {});
+                await page.waitForSelector(waitSelector, { timeout: 15000 }).catch(() => {
+                    logger.warn(`[${this.sourceName}] Selector ${waitSelector} not found within timeout.`);
+                });
+            } else {
+                await page.waitForTimeout(2000);
             }
 
             const content = await page.content();
