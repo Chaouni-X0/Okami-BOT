@@ -6,19 +6,20 @@ export class AzoraScraper extends BaseScraper {
     }
 
     async search(query) {
-        const url = `${this.baseUrl}/search?q=${encodeURIComponent(query)}`;
-        const $ = await this.fetchPage(url, '.series-card');
+        const url = `${this.baseUrl}/?s=${encodeURIComponent(query)}`;
+        const $ = await this.fetch(url, { waitSelector: '.listupd' });
         
         const results = [];
-        $('.series-card a, a[href*="/series/"]').each((i, el) => {
-            const href = $(el).attr('href');
-            const title = $(el).text().trim();
+        $('.listupd .bs').each((i, el) => {
+            const link = $(el).find('a');
+            const title = link.attr('title') || $(el).find('.tt').text().trim();
+            const href = link.attr('href');
             
-            if (href && href.includes('/series/') && title.toLowerCase().includes(query.toLowerCase())) {
-                const fullUrl = href.startsWith('http') ? href : `${this.baseUrl}${href}`;
+            if (href) {
                 results.push({
                     title,
-                    url: fullUrl,
+                    url: href,
+                    thumbnail: $(el).find('img').attr('src'),
                     source: 'azora',
                     sourceName: this.sourceName
                 });
@@ -28,36 +29,34 @@ export class AzoraScraper extends BaseScraper {
     }
 
     async getMangaInfo(url) {
-        const $ = await this.fetchPage(url, 'h1');
+        const $ = await this.fetch(url, { waitSelector: '.entry-title' });
         return {
-            title: $('h1').text().trim(),
-            cover: $('img[src*="poster"]').attr('src'),
-            description: $('.description').text().trim(),
+            title: $('.entry-title').text().trim(),
+            cover: $('.thumb img').attr('src'),
+            description: $('.entry-content').text().trim(),
             source: 'azora'
         };
     }
 
     async getChapters(url) {
-        const $ = await this.fetchPage(url, "a[href*='/chapter-']");
+        const $ = await this.fetch(url, { waitSelector: '#chapterlist' });
         const chapters = [];
-        $("a[href*='/chapter-']").each((i, el) => {
-            const href = $(el).attr('href');
-            const fullUrl = href.startsWith('http') ? href : `${this.baseUrl}${href}`;
+        $('#chapterlist li').each((i, el) => {
+            const link = $(el).find('a');
             chapters.push({
-                name: $(el).text().trim(),
-                url: fullUrl
+                name: $(el).find('.chapternum').text().trim(),
+                url: link.attr('href')
             });
         });
         return chapters;
     }
 
     async getChapterImages(url) {
-        const $ = await this.fetchPage(url, "img[src*='chapter']");
+        const $ = await this.fetch(url, { waitSelector: '#readerarea' });
         const images = [];
-        $("img[src*='chapter']").each((i, el) => {
+        $('#readerarea img').each((i, el) => {
             let src = $(el).attr('src') || $(el).attr('data-src');
-            if (src) {
-                if (src.startsWith('//')) src = 'https:' + src;
+            if (src && !src.includes('loader')) {
                 images.push(src.trim());
             }
         });
