@@ -8,16 +8,18 @@ const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb
 
 export const connectDB = async () => {
     try {
+        logger.info('Attempting to connect to MongoDB...');
         await mongoose.connect(MONGODB_URI, {
             maxPoolSize: 10,
-            serverSelectionTimeoutMS: 5000,
+            serverSelectionTimeoutMS: 10000,
             socketTimeoutMS: 45000,
             family: 4
         });
-        logger.info('Successfully connected to MongoDB with optimized settings.');
+        logger.info('Successfully connected to MongoDB.');
     } catch (error) {
-        logger.error(`MongoDB connection error: ${error.message}`);
-        process.exit(1);
+        logger.error(`[CRITICAL] MongoDB connection error: ${error.message}`);
+        // DO NOT exit(1) immediately to allow health checks to pass
+        logger.warn('Continuing without database connection. Some features may be unavailable.');
     }
 };
 

@@ -96,16 +96,20 @@ const PORT = process.env.PORT || 8080;
 // Increased memory handling
 const server = app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Okami Bot API running on port ${PORT}`);
+});
 
-    // Async init
-    setImmediate(async () => {
-        try {
-            await automationService.init();
-            logger.info('Automation Service initialized successfully.');
-        } catch (e) {
-            logger.error(`Failed to init automation: ${e.message}`);
-        }
-    });
+// Async init outside of server listen to not block healthcheck
+setImmediate(async () => {
+    try {
+        // Connect DB first
+        const { connectDB } = await import('./database/mongodb.js');
+        await connectDB();
+        
+        await automationService.init();
+        logger.info('Services initialized successfully.');
+    } catch (e) {
+        logger.error(`Failed to init services: ${e.message}`);
+    }
 });
 
 // Graceful Shutdown
