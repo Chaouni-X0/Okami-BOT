@@ -7,10 +7,32 @@ export class AzoraScraper extends BaseScraper {
 
     async search(query) {
         const url = `${this.baseUrl}/?s=${encodeURIComponent(query)}`;
-        const $ = await this.fetch(url, { waitSelector: '.listupd' });
+        const $ = await this.fetch(url, { interceptApis: true });
         
+        if (!$) return [];
+
+        // 1. Network Level API Extraction
+        if ($.interceptedData && $.interceptedData.length > 0) {
+            for (const item of $.interceptedData) {
+                const data = item.data;
+                if (data && (Array.isArray(data) || data.posts || data.items || data.data)) {
+                    const list = Array.isArray(data) ? data : (data.posts || data.items || data.data);
+                    if (Array.isArray(list) && list.length > 0) {
+                        return list.map(m => ({
+                            title: m.title || m.name || m.post_title,
+                            url: m.url || m.link || m.guid,
+                            thumbnail: m.thumbnail || m.image || m.cover,
+                            source: 'azora',
+                            sourceName: this.sourceName
+                        })).filter(m => m.title && m.url);
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback to DOM
         const results = [];
-        $('.listupd .bs').each((i, el) => {
+        $('.listupd .bs, .post-item, .utao, .series-card').each((i, el) => {
             const link = $(el).find('a');
             const title = link.attr('title') || $(el).find('.tt').text().trim();
             const href = link.attr('href');
@@ -19,7 +41,7 @@ export class AzoraScraper extends BaseScraper {
                 results.push({
                     title,
                     url: href,
-                    thumbnail: $(el).find('img').attr('src'),
+                    thumbnail: $(el).find('img').attr('src') || $(el).find('img').attr('data-src'),
                     source: 'azora',
                     sourceName: this.sourceName
                 });
@@ -29,22 +51,26 @@ export class AzoraScraper extends BaseScraper {
     }
 
     async getMangaInfo(url) {
-        const $ = await this.fetch(url, { waitSelector: '.entry-title' });
+        const $ = await this.fetch(url);
+        if (!$) return null;
+
         return {
-            title: $('.entry-title').text().trim(),
-            cover: $('.thumb img').attr('src'),
-            description: $('.entry-content').text().trim(),
+            title: $('.entry-title').text().trim() || $('h1').text().trim(),
+            cover: $('.thumb img').attr('src') || $('.summary_image img').attr('src'),
+            description: $('.entry-content').text().trim() || $('.description-summary').text().trim(),
             source: 'azora'
         };
     }
 
     async getChapters(url) {
-        const $ = await this.fetch(url, { waitSelector: '#chapterlist' });
+        const $ = await this.fetch(url);
+        if (!$) return [];
+
         const chapters = [];
-        $('#chapterlist li').each((i, el) => {
+        $('#chapterlist li, .wp-manga-chapter, .eplister li').each((i, el) => {
             const link = $(el).find('a');
             chapters.push({
-                name: $(el).find('.chapternum').text().trim(),
+                name: $(el).find('.chapternum').text().trim() || link.text().trim(),
                 url: link.attr('href')
             });
         });
@@ -52,11 +78,13 @@ export class AzoraScraper extends BaseScraper {
     }
 
     async getChapterImages(url) {
-        const $ = await this.fetch(url, { waitSelector: '#readerarea' });
+        const $ = await this.fetch(url);
+        if (!$) return [];
+
         const images = [];
-        $('#readerarea img').each((i, el) => {
+        $('#readerarea img, .reading-content img').each((i, el) => {
             let src = $(el).attr('src') || $(el).attr('data-src');
-            if (src && !src.includes('loader')) {
+            if (src && !src.includes('loader') && !src.includes('logo')) {
                 images.push(src.trim());
             }
         });

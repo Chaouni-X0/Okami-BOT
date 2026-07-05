@@ -6,45 +6,49 @@ export class AsuraScraper extends BaseScraper {
     }
 
     async search(query) {
-        // Try both search patterns
-        const searchUrls = [
-            `${this.baseUrl}/?s=${encodeURIComponent(query)}`,
-            `${this.baseUrl}/search?q=${encodeURIComponent(query)}`
-        ];
+        const url = `${this.baseUrl}/?s=${encodeURIComponent(query)}`;
+        const $ = await this.fetch(url, { interceptApis: true });
+        
+        if (!$) return [];
 
-        for (const url of searchUrls) {
-            const $ = await this.fetch(url);
-            if (!$) continue;
+        // 1. Try to extract from intercepted JSON data (Network Level)
+        if ($.interceptedData && $.interceptedData.length > 0) {
+            for (const item of $.interceptedData) {
+                // Check if the JSON contains manga/series list
+                const data = item.data;
+                if (data && (Array.isArray(data) || data.posts || data.items || data.data)) {
+                    const list = Array.isArray(data) ? data : (data.posts || data.items || data.data);
+                    if (Array.isArray(list) && list.length > 0) {
+                        return list.map(m => ({
+                            title: m.title || m.name || m.post_title,
+                            url: m.url || m.link || m.guid,
+                            thumbnail: m.thumbnail || m.image || m.cover,
+                            source: 'asura',
+                            sourceName: this.sourceName
+                        })).filter(m => m.title && m.url);
+                    }
+                }
+            }
+        }
 
-            // Check if Self-Healing data is available
-            if ($.isSelfHealing && $.smartData) {
-                return $.smartData.map(item => ({
-                    ...item,
+        // 2. Fallback to DOM parsing if no JSON API found
+        const results = [];
+        $('.listupd .bs, .post-item, .utao, .series-card').each((i, el) => {
+            const link = $(el).find('a');
+            const title = link.attr('title') || $(el).find('.tt').text().trim() || $(el).find('h2').text().trim();
+            const href = link.attr('href');
+            
+            if (href) {
+                results.push({
+                    title,
+                    url: href,
+                    thumbnail: $(el).find('img').attr('src') || $(el).find('img').attr('data-src'),
                     source: 'asura',
                     sourceName: this.sourceName
-                }));
+                });
             }
-
-            const results = [];
-            $('.listupd .bs, .post-item, .utao, .series-card').each((i, el) => {
-                const link = $(el).find('a');
-                const title = link.attr('title') || $(el).find('.tt').text().trim() || $(el).find('h2').text().trim();
-                const href = link.attr('href');
-                
-                if (href) {
-                    results.push({
-                        title,
-                        url: href,
-                        thumbnail: $(el).find('img').attr('src') || $(el).find('img').attr('data-src'),
-                        source: 'asura',
-                        sourceName: this.sourceName
-                    });
-                }
-            });
-
-            if (results.length > 0) return results;
-        }
-        return [];
+        });
+        return results;
     }
 
     async getMangaInfo(url) {
