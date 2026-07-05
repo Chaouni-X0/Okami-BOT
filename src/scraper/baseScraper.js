@@ -11,76 +11,79 @@ export class BaseScraper {
     }
 
     /**
-     * Hybrid Fetcher: Tries Axios first for speed, falls back to Playwright for protected sites
+     * The main entry for fetching pages. 
+     * Tries Playwright first for high fidelity, falls back to Axios for speed/reliability.
      */
-    async fetch(url, options = {}) {
-        const { useBrowser = false, waitSelector = null, retries = 2 } = options;
+    async fetchPage(url, options = {}) {
+        const { waitSelector = null, useBrowser = true } = options;
 
-        if (!useBrowser) {
+        if (useBrowser) {
             try {
-                logger.info(`[${this.sourceName}] Fast Fetch (Axios): ${url}`);
-                const response = await axios.get(url, {
-                    timeout: 10000,
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                        'Accept-Language': 'en-US,en;q=0.5',
-                        'Referer': this.baseUrl
-                    }
-                });
-                return cheerio.load(response.data);
+                return await this.fetchWithBrowser(url, waitSelector);
             } catch (error) {
-                logger.warn(`[${this.sourceName}] Axios failed, falling back to Playwright: ${error.message}`);
+                logger.warn(`[${this.sourceName}] Playwright failed, falling back to Axios: ${error.message}`);
             }
         }
 
-        return this.fetchWithBrowser(url, waitSelector, retries);
+        // Fallback to Axios
+        try {
+            logger.info(`[${this.sourceName}] Axios Fetch (Fallback): ${url}`);
+            const response = await axios.get(url, {
+                timeout: 15000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    'Referer': this.baseUrl
+                }
+            });
+            return cheerio.load(response.data);
+        } catch (error) {
+            logger.error(`[${this.sourceName}] Both Playwright and Axios failed: ${error.message}`);
+            throw error;
+        }
     }
 
-    async fetchWithBrowser(url, waitSelector = null, retries = 2) {
-        let lastError;
-        for (let i = 0; i < retries; i++) {
-            let browser, context, page;
-            try {
-                if (!this.browser) {
-                    this.browser = await chromium.launch({
-                        headless: true,
-                        args: ['--no-sandbox', '--disable-setuid-sandbox']
-                    });
-                }
-                
-                context = await this.browser.newContext({
-                    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    viewport: { width: 1280, height: 720 }
+    /**
+     * Legacy support for 'fetch' method if still used
+     */
+    async fetch(url, options = {}) {
+        return this.fetchPage(url, options);
+    }
+
+    async fetchWithBrowser(url, waitSelector = null) {
+        let context;
+        try {
+            if (!this.browser) {
+                this.browser = await chromium.launch({
+                    headless: true,
+                    args: ['--no-sandbox', '--disable-setuid-sandbox']
                 });
-
-                page = await context.newPage();
-                
-                // Stealth Injection
-                await page.addInitScript(() => {
-                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                });
-
-                logger.info(`[${this.sourceName}] Browser Fetch (Playwright): ${url} (Attempt ${i + 1})`);
-                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                
-                if (waitSelector) {
-                    await page.waitForSelector(waitSelector, { timeout: 15000 }).catch(() => {});
-                } else {
-                    await page.waitForTimeout(3000);
-                }
-
-                const content = await page.content();
-                await context.close();
-                return cheerio.load(content);
-            } catch (error) {
-                lastError = error;
-                logger.error(`[${this.sourceName}] Browser Error: ${error.message}`);
-                if (context) await context.close();
-                await new Promise(res => setTimeout(res, 2000));
             }
+            
+            context = await this.browser.newContext({
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            });
+
+            const page = await context.newPage();
+            
+            // Stealth Injection
+            await page.addInitScript(() => {
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            });
+
+            logger.info(`[${this.sourceName}] Playwright Fetch: ${url}`);
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            
+            if (waitSelector) {
+                await page.waitForSelector(waitSelector, { timeout: 10000 }).catch(() => {});
+            }
+
+            const content = await page.content();
+            await context.close();
+            return cheerio.load(content);
+        } catch (error) {
+            if (context) await context.close();
+            throw error;
         }
-        throw lastError;
     }
 
     async close() {
