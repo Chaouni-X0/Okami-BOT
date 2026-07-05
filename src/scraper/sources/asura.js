@@ -7,31 +7,27 @@ export class AsuraScraper extends BaseScraper {
 
     async search(query) {
         const url = `${this.baseUrl}/?s=${encodeURIComponent(query)}`;
-        const $ = await this.fetch(url, { interceptApis: true });
+        const result = await this.fetch(url, { interceptApis: true });
         
-        if (!$) return [];
+        if (!result) return [];
 
-        // 1. Try to extract from intercepted JSON data (Network Level)
-        if ($.interceptedData && $.interceptedData.length > 0) {
-            for (const item of $.interceptedData) {
-                // Check if the JSON contains manga/series list
-                const data = item.data;
-                if (data && (Array.isArray(data) || data.posts || data.items || data.data)) {
-                    const list = Array.isArray(data) ? data : (data.posts || data.items || data.data);
-                    if (Array.isArray(list) && list.length > 0) {
-                        return list.map(m => ({
-                            title: m.title || m.name || m.post_title,
-                            url: m.url || m.link || m.guid,
-                            thumbnail: m.thumbnail || m.image || m.cover,
-                            source: 'asura',
-                            sourceName: this.sourceName
-                        })).filter(m => m.title && m.url);
-                    }
-                }
+        // 1. Handle Smart API Response
+        if (result.isApi && result.data) {
+            const data = result.data;
+            const list = Array.isArray(data) ? data : (data.posts || data.results || data.items || data.data);
+            if (Array.isArray(list)) {
+                return list.map(m => ({
+                    title: m.title || m.name || m.post_title,
+                    url: m.url || m.link || m.guid,
+                    thumbnail: m.thumbnail || m.image || m.cover || m.featured_image,
+                    source: 'asura',
+                    sourceName: this.sourceName
+                })).filter(m => m.title && m.url);
             }
         }
 
-        // 2. Fallback to DOM parsing if no JSON API found
+        // 2. Fallback to DOM Parsing (Cheerio)
+        const $ = result;
         const results = [];
         $('.listupd .bs, .post-item, .utao, .series-card').each((i, el) => {
             const link = $(el).find('a');
@@ -48,12 +44,33 @@ export class AsuraScraper extends BaseScraper {
                 });
             }
         });
+
+        // 3. Final Fallback: Link Extraction (Self-Healing)
+        if (results.length === 0 && $) {
+            $('a').each((i, el) => {
+                const href = $(el).attr('href') || '';
+                const text = $(el).text().trim();
+                if ((href.includes('manga') || href.includes('series')) && text.length > 2) {
+                    results.push({
+                        title: text,
+                        url: href,
+                        thumbnail: null,
+                        source: 'asura',
+                        sourceName: this.sourceName
+                    });
+                }
+            });
+        }
+
         return results;
     }
 
     async getMangaInfo(url) {
-        const $ = await this.fetch(url);
-        if (!$) return null;
+        const result = await this.fetch(url);
+        if (!result) return null;
+        
+        const $ = result.isApi ? null : result;
+        if (!$) return null; // Info usually requires DOM or specialized API
 
         return {
             title: $('.entry-title').text().trim() || $('h1').text().trim(),
@@ -64,7 +81,10 @@ export class AsuraScraper extends BaseScraper {
     }
 
     async getChapters(url) {
-        const $ = await this.fetch(url);
+        const result = await this.fetch(url);
+        if (!result) return [];
+        
+        const $ = result.isApi ? null : result;
         if (!$) return [];
 
         const chapters = [];
@@ -79,7 +99,10 @@ export class AsuraScraper extends BaseScraper {
     }
 
     async getChapterImages(url) {
-        const $ = await this.fetch(url);
+        const result = await this.fetch(url);
+        if (!result) return [];
+        
+        const $ = result.isApi ? null : result;
         if (!$) return [];
 
         const images = [];

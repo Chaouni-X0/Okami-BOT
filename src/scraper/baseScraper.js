@@ -8,24 +8,39 @@ export class BaseScraper {
         this.sourceName = sourceName;
         this.baseUrl = baseUrl;
         this.browser = null;
-        this.interceptedApis = new Set();
+        this.discoveredApis = new Map(); // Store source -> API URL mapping
     }
 
     /**
-     * Network-Level Scraper Core
+     * Smart API-based Scraper Core
      */
     async fetch(url, options = {}) {
         const { useBrowser = true, interceptApis = true } = options;
         
-        if (useBrowser) {
+        // 1. Try previously discovered API for this source (Fastest)
+        if (this.discoveredApis.has(this.sourceName)) {
+            const apiInfo = this.discoveredApis.get(this.sourceName);
             try {
-                return await this.fetchWithNetworkSniffing(url, interceptApis);
-            } catch (error) {
-                logger.warn(`[${this.sourceName}] Network sniffing failed, trying Axios fallback: ${error.message}`);
+                logger.info(`[${this.sourceName}] Using Discovered API: ${apiInfo.url}`);
+                const response = await axios.get(apiInfo.url, { timeout: 10000 });
+                if (this.isValidMangaJson(response.data)) {
+                    return { isApi: true, data: response.data };
+                }
+            } catch (e) {
+                logger.warn(`[${this.sourceName}] Discovered API failed, falling back to browser.`);
+                this.discoveredApis.delete(this.sourceName);
             }
         }
 
-        // Axios Fallback
+        if (useBrowser) {
+            try {
+                return await this.fetchWithSmartInterception(url, interceptApis);
+            } catch (error) {
+                logger.warn(`[${this.sourceName}] Smart Interception failed: ${error.message}`);
+            }
+        }
+
+        // 2. Axios + Cheerio Fallback
         try {
             const response = await axios.get(url, {
                 timeout: 15000,
@@ -41,7 +56,7 @@ export class BaseScraper {
         }
     }
 
-    async fetchWithNetworkSniffing(url, interceptApis) {
+    async fetchWithSmartInterception(url, interceptApis) {
         let context;
         try {
             if (!this.browser) {
@@ -56,37 +71,40 @@ export class BaseScraper {
             });
 
             const page = await context.newPage();
-            const interceptedData = [];
+            const validApiData = [];
 
-            // 1. Network Interception
             if (interceptApis) {
+                // 1. Smart Filtering Interception
                 await page.route('**/*', async (route) => {
                     const request = route.request();
                     const reqUrl = request.url();
                     
-                    // Look for XHR/Fetch requests that might be APIs
-                    if (request.resourceType() === 'xhr' || request.resourceType() === 'fetch') {
-                        if (reqUrl.includes('/api/') || reqUrl.includes('search') || reqUrl.includes('graphql') || reqUrl.includes('query')) {
-                            logger.info(`[${this.sourceName}] Intercepted Potential API: ${reqUrl}`);
-                            this.interceptedApis.add(reqUrl);
-                        }
+                    // Ignore noisy domains
+                    const ignoredPatterns = ['analytics', 'track', 'ads', 'promotion', 'announcement', 'google-analytics', 'facebook', 'doubleclick'];
+                    if (ignoredPatterns.some(p => reqUrl.includes(p))) {
+                        return route.abort();
                     }
+                    
                     route.continue();
                 });
 
-                // Listen for responses to capture JSON data directly
+                // 2. Response Monitoring for Valid JSON
                 page.on('response', async (response) => {
                     const req = response.request();
+                    const reqUrl = req.url();
+                    
                     if ((req.resourceType() === 'xhr' || req.resourceType() === 'fetch') && response.status() === 200) {
                         try {
                             const contentType = response.headers()['content-type'];
                             if (contentType && contentType.includes('application/json')) {
                                 const json = await response.json();
-                                interceptedData.push({ url: req.url(), data: json });
+                                if (this.isValidMangaJson(json)) {
+                                    logger.info(`[${this.sourceName}] VALID API DISCOVERED: ${reqUrl}`);
+                                    validApiData.push({ url: reqUrl, data: json });
+                                    this.discoveredApis.set(this.sourceName, { url: reqUrl, timestamp: Date.now() });
+                                }
                             }
-                        } catch (e) {
-                            // Not JSON or error reading
-                        }
+                        } catch (e) {}
                     }
                 });
             }
@@ -98,19 +116,40 @@ export class BaseScraper {
 
             await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
             
-            // 2. Return result with intercepted data
+            // Return result
+            if (validApiData.length > 0) {
+                await context.close();
+                return { isApi: true, data: validApiData[0].data };
+            }
+
             const content = await page.content();
             const $ = cheerio.load(content);
-            
-            $.interceptedData = interceptedData;
-            $.isNetworkLevel = true;
-
             await context.close();
             return $;
         } catch (error) {
             if (context) await context.close();
             throw error;
         }
+    }
+
+    /**
+     * Heuristic to check if JSON contains manga-like data
+     */
+    isValidMangaJson(json) {
+        if (!json) return false;
+        const stringified = JSON.stringify(json).toLowerCase();
+        
+        // Check for common manga fields
+        const markers = ['title', 'name', 'results', 'posts', 'series', 'manga', 'chapter'];
+        const hasMarkers = markers.some(m => stringified.includes(m));
+        
+        // Check for actual data structure
+        const hasData = Array.isArray(json) || 
+                        (json.posts && Array.isArray(json.posts)) || 
+                        (json.results && Array.isArray(json.results)) ||
+                        (json.data && (Array.isArray(json.data) || json.data.items));
+                        
+        return hasMarkers && hasData;
     }
 
     async close() {
