@@ -15,6 +15,7 @@
     "setup": "npm install && pip3 install -r python_engine/requirements.txt"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "axios": "^1.18.1",
     "better-sqlite3": "latest",
     "cheerio": "^1.2.0",
