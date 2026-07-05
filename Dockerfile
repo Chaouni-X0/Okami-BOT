@@ -1,18 +1,29 @@
-# Use the official Playwright image which has all dependencies pre-installed
+# Use the official Playwright image which includes browser dependencies
 FROM mcr.microsoft.com/playwright:v1.61.1-jammy
 
 # Set working directory
 WORKDIR /app
 
+# Install build tools for native modules like better-sqlite3
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy package files
 COPY package.json ./
 
-# Remove pnpm-lock if exists to avoid confusion, use npm for maximum compatibility on Railway
-RUN rm -f pnpm-lock.yaml
+# Remove lock files to avoid conflicts, use npm for standard build
+RUN rm -f pnpm-lock.yaml package-lock.json
 
-# Install dependencies using npm (Standard and reliable)
-# We use --unsafe-perm to allow postinstall scripts for root
-RUN npm install
+# Install dependencies
+# We use --unsafe-perm to allow postinstall scripts for native modules
+RUN npm install --unsafe-perm
+
+# Install Playwright browsers explicitly to be sure
+RUN npx playwright install chromium --with-deps
 
 # Copy the rest of the application
 COPY . .
@@ -25,4 +36,4 @@ ENV PORT=8080
 EXPOSE 8080
 
 # Start command
-CMD ["npm", "start"]
+CMD ["node", "src/index.js"]

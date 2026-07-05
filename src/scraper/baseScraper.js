@@ -11,12 +11,12 @@ export class BaseScraper {
     }
 
     /**
-     * Advanced fetchPage with Playwright + Axios Fallback
+     * The main entry for fetching pages. 
+     * Tries Playwright first for high fidelity, falls back to Axios for speed/reliability.
      */
     async fetchPage(url, options = {}) {
         const { waitSelector = null, useBrowser = true } = options;
 
-        // Try Playwright First
         if (useBrowser) {
             try {
                 return await this.fetchWithBrowser(url, waitSelector);
@@ -25,7 +25,7 @@ export class BaseScraper {
             }
         }
 
-        // Axios Fallback
+        // Fallback to Axios
         try {
             logger.info(`[${this.sourceName}] Axios Fallback Fetch: ${url}`);
             const response = await axios.get(url, {
@@ -44,7 +44,7 @@ export class BaseScraper {
     }
 
     /**
-     * Legacy fetch method support
+     * Legacy support for 'fetch' method
      */
     async fetch(url, options = {}) {
         return this.fetchPage(url, options);
