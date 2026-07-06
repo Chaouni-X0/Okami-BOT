@@ -34,8 +34,8 @@ COPY . .
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# Expose port
-EXPOSE 8080
+# Ensure we use the production port provided by Railway
+ENV PORT=8080
 
-# Start command
+# Start command - Execute node directly to handle signals correctly
 CMD ["node", "src/index.js"]

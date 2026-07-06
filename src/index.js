@@ -23,11 +23,16 @@ app.use('/api/scraper', scraperRoutes);
 app.use('/api/admin', adminRoutes);
 
 // 3. مسار اختبار الصحة (Health Check)
-app.get('/health', (req, res) => {
+// 🎯 Railway Healthcheck (Minimal & Instant)
+app.get('/health', (req, res) => res.status(200).send('OK'));
+app.get('/healthz', (req, res) => res.status(200).send('OK'));
+
+// Detailed Status Route
+app.get('/status', (req, res) => {
     res.status(200).json({
         status: 'UP',
-        timestamp: new Date().toISOString(),
-        dbStatus: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED'
+        db: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
+        uptime: process.uptime()
     });
 });
 
