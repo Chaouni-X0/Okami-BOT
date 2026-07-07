@@ -2,7 +2,7 @@ import { BaseScraper } from '../baseScraper.js';
 
 export class TeamXScraper extends BaseScraper {
     constructor() {
-        super('TeamX', 'https://olympustaff.com');
+        super('TeamX', 'https://teamx.top');
     }
 
     async search(query) {

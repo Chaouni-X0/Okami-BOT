@@ -2,64 +2,98 @@ import { BaseScraper } from '../baseScraper.js';
 
 export class MangaSwatScraper extends BaseScraper {
     constructor() {
-        super('MangaSwat', 'https://meshmanga.com');
+        super('MangaSwat', 'https://mangaswat.com');
     }
 
     async search(query) {
         const url = `${this.baseUrl}/?s=${encodeURIComponent(query)}`;
-        // MangaSwat often has Cloudflare, use browser for search if axios fails
-        const $ = await this.fetch(url, { waitSelector: '.listupd' });
+        const result = await this.fetch(url, { interceptApis: true });
         
-        const results = [];
-        $('.listupd .bs').each((i, el) => {
-            const link = $(el).find('a');
-            const title = link.attr('title') || $(el).find('.tt').text().trim();
-            const href = link.attr('href');
+        if (!result || !result.data) return [];
+
+        // 1. Process API JSON Data
+        if (result.type === 'api') {
+            const data = result.data;
+            const list = Array.isArray(data) ? data : (data.results || data.posts || data.items || (data.data && (data.data.results || data.data.items || data.data)));
             
-            if (href) {
-                results.push({
-                    title,
-                    url: href,
-                    thumbnail: $(el).find('img').attr('src'),
-                    source: 'mangaswat',
-                    sourceName: this.sourceName
-                });
+            if (Array.isArray(list)) {
+                return list.map(m => {
+                    if (!m) return null;
+                    return {
+                        title: m.title || m.name || m.post_title || 'Unknown',
+                        url: m.url || m.link || m.guid || (m.slug ? `${this.baseUrl}/manga/${m.slug}` : null),
+                        thumbnail: m.thumbnail || m.image || m.cover || m.featured_image || (m.img ? m.img : null),
+                        source: 'mangaswat',
+                        sourceName: this.sourceName
+                    };
+                }).filter(m => m && m.url);
             }
-        });
-        return results;
+        }
+
+        // 2. Process DOM HTML Data (Cheerio)
+        if (result.type === 'dom') {
+            const $ = result.data;
+            const results = [];
+            $('.listupd .bs, .post-item, .utao, .series-card').each((i, el) => {
+                const link = $(el).find('a');
+                const title = link.attr('title') || $(el).find('.tt').text().trim() || $(el).find('h2, h3').text().trim();
+                const href = link.attr('href');
+                
+                if (href) {
+                    results.push({
+                        title,
+                        url: href,
+                        thumbnail: $(el).find('img').attr('src') || $(el).find('img').attr('data-src'),
+                        source: 'mangaswat',
+                        sourceName: this.sourceName
+                    });
+                }
+            });
+            return results;
+        }
+
+        return [];
     }
 
     async getMangaInfo(url) {
-        const $ = await this.fetch(url, { waitSelector: '.entry-title' });
+        const result = await this.fetch(url);
+        if (!result || result.type !== 'dom') return null;
+        const $ = result.data;
+
         return {
-            title: $('.entry-title').text().trim(),
-            cover: $('.thumb img').attr('src'),
-            description: $('.entry-content').text().trim(),
+            title: $('.entry-title').text().trim() || $('h1').text().trim(),
+            cover: $('.thumb img').attr('src') || $('.summary_image img').attr('src'),
+            description: $('.entry-content').text().trim() || $('.description-summary').text().trim(),
             status: $('.infotable tr:contains("Status") td:last-child').text().trim(),
             source: 'mangaswat'
         };
     }
 
     async getChapters(url) {
-        const $ = await this.fetch(url, { waitSelector: '#chapterlist' });
+        const result = await this.fetch(url);
+        if (!result || result.type !== 'dom') return [];
+        const $ = result.data;
+
         const chapters = [];
-        $('#chapterlist li').each((i, el) => {
+        $('#chapterlist li, .wp-manga-chapter, .eplister li').each((i, el) => {
             const link = $(el).find('a');
             chapters.push({
-                name: $(el).find('.chapternum').text().trim(),
-                url: link.attr('href'),
-                date: $(el).find('.chapterdate').text().trim()
+                name: $(el).find('.chapternum').text().trim() || link.text().trim(),
+                url: link.attr('href')
             });
         });
         return chapters;
     }
 
     async getChapterImages(url) {
-        const $ = await this.fetch(url, { waitSelector: '#readerarea' });
+        const result = await this.fetch(url);
+        if (!result || result.type !== 'dom') return [];
+        const $ = result.data;
+
         const images = [];
-        $('#readerarea img').each((i, el) => {
+        $('#readerarea img, .reading-content img, .entry-content img').each((i, el) => {
             let src = $(el).attr('src') || $(el).attr('data-src');
-            if (src && !src.includes('loader')) {
+            if (src && !src.includes('loader') && !src.includes('logo')) {
                 images.push(src.trim());
             }
         });
