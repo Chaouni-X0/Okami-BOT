@@ -108,7 +108,7 @@ export class BaseScraper {
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
             });
 
-            await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
             
             if (discoveredJson) {
                 await context.close();
