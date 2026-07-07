@@ -52,5 +52,14 @@ mongoose.connection.on('error', err => {
 const userSchema = new mongoose.Schema({ fb_id: { type: String, unique: true }, name: String });
 const mangaSchema = new mongoose.Schema({ title: String, slug: { type: String, unique: true } });
 
+const chapterSchema = new mongoose.Schema({
+    mangaId: { type: mongoose.Schema.Types.ObjectId, ref: 'Manga' },
+    chapterNumber: String,
+    title: String,
+    url: String,
+    published: { type: Boolean, default: false }
+});
+
 export const User = mongoose.model('User', userSchema);
 export const Manga = mongoose.model('Manga', mangaSchema);
+export const Chapter = mongoose.model('Chapter', chapterSchema);
