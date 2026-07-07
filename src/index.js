@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import scraperRoutes from './routes/scraperRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import webhookRoutes from './routes/webhookRoutes.js';
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use(express.json());
 // 2. مسارات التطبيق
 app.use('/api/scraper', scraperRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/webhook', webhookRoutes);
 
 /**
  * 🎯 3. مسار اختبار الصحة (Health Check)

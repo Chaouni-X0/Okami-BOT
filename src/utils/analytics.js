@@ -1,6 +1,3 @@
-import sys from 'sys';
-// This is a bridge to the Python-based SimilarWeb API
-// Since the environment is Node.js, we will use a child process or a helper script
 import { execSync } from 'child_process';
 import logger from './logger.js';
 
