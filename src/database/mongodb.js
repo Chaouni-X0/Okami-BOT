@@ -11,8 +11,8 @@ export const connectDB = async () => {
         mongoose.set('bufferCommands', false); // CRITICAL: fail fast, don't hang
         await mongoose.connect(MONGODB_URI, {
             maxPoolSize: 10,
-            serverSelectionTimeoutMS: 3000,
-            socketTimeoutMS: 10000,
+            serverSelectionTimeoutMS: 2000, // Faster timeout for healthchecks
+            socketTimeoutMS: 5000,
             family: 4
         });
         logger.info('Successfully connected to MongoDB with optimized settings.');
