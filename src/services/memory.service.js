@@ -16,9 +16,11 @@ export class MemoryService {
                 title: mangaData.title,
                 slug: mangaData.slug,
                 cover_url: mangaData.coverUrl,
+                description: mangaData.description || '',
                 status: mangaData.status,
                 source_site_key: mangaData.sourceSite,
                 source_url: mangaData.sourceUrl,
+                compilation_post_id: mangaData.compilationPostId,
                 updated_at: Date.now()
             };
 
@@ -38,9 +40,11 @@ export class MemoryService {
                 title: mangaData.title,
                 slug: mangaData.slug,
                 cover_url: mangaData.coverUrl,
+                description: mangaData.description || '',
                 status: mangaData.status || 'مستمر',
                 source_site_key: mangaData.sourceSite,
                 source_url: mangaData.sourceUrl,
+                compilation_post_id: mangaData.compilationPostId,
                 updated_at: new Date().toISOString()
             };
 
@@ -51,6 +55,29 @@ export class MemoryService {
             }
             db.save();
             return data;
+        }
+    }
+
+    static async getMangaById(mangaId) {
+        try {
+            return await Manga.findById(mangaId);
+        } catch (error) {
+            logger.warn(`[AI Studio] Mongoose findById failed: ${error.message}. Falling back to persistent local JSON DB.`);
+            return db.data.manga.find(m => m.id === mangaId || m._id === mangaId);
+        }
+    }
+
+    static async updateMangaCompilationPost(mangaId, postId) {
+        try {
+            return await Manga.findByIdAndUpdate(mangaId, { compilation_post_id: postId }, { new: true });
+        } catch (error) {
+            logger.warn(`[AI Studio] Mongoose findByIdAndUpdate failed: ${error.message}. Falling back to persistent local JSON DB.`);
+            const manga = db.data.manga.find(m => m.id === mangaId || m._id === mangaId);
+            if (manga) {
+                manga.compilation_post_id = postId;
+                db.save();
+            }
+            return manga;
         }
     }
 

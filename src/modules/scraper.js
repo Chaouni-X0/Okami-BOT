@@ -2,6 +2,20 @@ import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
 import { scraperManager } from '../scraper/scraperManager.js';
 
+export function extractChapterNumber(name) {
+    if (!name) return 0;
+    const cleanName = name.replace(/،/g, '.').replace(/,/g, '.');
+    const match = cleanName.match(/(?:الفصل|chapter|ch|f)\s*([0-9]+(?:\.[0-9]+)?)/i);
+    if (match && match[1]) {
+        return parseFloat(match[1]);
+    }
+    const genericMatch = cleanName.match(/([0-9]+(?:\.[0-9]+)?)/);
+    if (genericMatch && genericMatch[1]) {
+        return parseFloat(genericMatch[1]);
+    }
+    return 0;
+}
+
 export class ScraperEngine {
     constructor() {
         this.sources = config.sources;
@@ -47,16 +61,24 @@ export class ScraperEngine {
         try {
             const result = await scraperManager.getDetails(sourceId, mangaUrl);
             if (result.success) {
+                const parsedFirst = result.chapters[0] ? extractChapterNumber(result.chapters[0].name) : 0;
+                const parsedLast = result.chapters[result.chapters.length - 1] ? extractChapterNumber(result.chapters[result.chapters.length - 1].name) : 0;
+                const isNewestFirst = parsedFirst >= parsedLast;
+
                 return {
                     title: result.info.title,
                     coverUrl: result.info.cover,
                     description: result.info.description,
                     status: 'Unknown',
-                    chapters: result.chapters.map((ch, i) => ({
-                        url: ch.url,
-                        name: ch.name,
-                        number: i + 1
-                    }))
+                    chapters: result.chapters.map((ch, i) => {
+                        const parsedNum = extractChapterNumber(ch.name);
+                        const fallback = isNewestFirst ? (result.chapters.length - i) : (i + 1);
+                        return {
+                            url: ch.url,
+                            name: ch.name,
+                            number: parsedNum || fallback
+                        };
+                    })
                 };
             }
             throw new Error(result.error || 'Failed to get details');

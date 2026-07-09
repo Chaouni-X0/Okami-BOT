@@ -14,12 +14,12 @@ Set these variables in your Railway project:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `ADMIN_PASSWORD` | Admin activation key for developer mode | `your-secret-key` |
-| `PAGE_ACCESS_TOKEN` | Facebook Page Access Token | `EAABs...` |
+| `FB_ACCESS_TOKEN` / `PAGE_ACCESS_TOKEN` | Facebook Page Access Token | `EAABs...` |
 | `FB_PAGE_ID` | Facebook Page ID | `123456789` |
-| `VERIFY_TOKEN` | Webhook verification token | `your-verify-token` |
+| `FB_VERIFY_TOKEN` / `VERIFY_TOKEN` | Webhook verification token | `your-verify-token` |
 | `PORT` | Server port (default: 8080) | `8080` |
 | `NODE_ENV` | Environment (production/development) | `production` |
-| `PYTHON_PATH` | Python executable path | `python3` |
+| `MONGODB_URI` / `MONGO_URI` | MongoDB Connection URI | `mongodb+srv://...` |
 | `DATA_DIR` | Data directory path | `./data` |
 
 ## Deployment Steps
@@ -87,15 +87,15 @@ railway logs | grep "error"
 
 The app includes a health check endpoint:
 ```bash
-curl https://your-railway-app-url.up.railway.app/status
+curl https://your-railway-app-url.up.railway.app/health
 ```
 
 Expected response:
 ```json
 {
   "status": "online",
-  "project": "🐺 Okami Bot (Railway Optimized)",
-  "version": "2.0.0"
+  "project": "🐺 Okami Bot",
+  "version": "7.0.0 (Node-Only Optimized)"
 }
 ```
 

@@ -6,6 +6,7 @@ import { FacebookPublisher } from './modules/publisher.js';
 import { AutomationService } from './services/automation.service.js';
 import logger from './utils/logger.js';
 import { scraperManager } from './scraper/scraperManager.js';
+import { connectDB } from './database/mongodb.js';
 
 // Global Error Handling to prevent crashes
 process.on('uncaughtException', (err) => {
@@ -92,8 +93,9 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     // Async init
     setImmediate(async () => {
         try {
+            await connectDB();
             await automationService.init();
-            logger.info('Automation Service initialized successfully.');
+            logger.info('Automation Service and MongoDB initialized successfully.');
         } catch (e) {
             logger.error(`Failed to init automation: ${e.message}`);
         }

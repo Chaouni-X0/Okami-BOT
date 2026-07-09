@@ -6,10 +6,10 @@ const DATA_DIR = process.env.DATA_DIR || './data';
 
 export const config = {
     facebook: {
-        accessToken: process.env.FB_ACCESS_TOKEN || '',
+        accessToken: process.env.FB_ACCESS_TOKEN || process.env.PAGE_ACCESS_TOKEN || '',
         pageId: process.env.FB_PAGE_ID || '',
         appSecret: process.env.FB_APP_SECRET,
-        verifyToken: process.env.FB_VERIFY_TOKEN || 'okami_verify_token'
+        verifyToken: process.env.FB_VERIFY_TOKEN || process.env.VERIFY_TOKEN || 'okami_verify_token'
     },
     admin: {
         activationKey: "chaouni_x_2013-2",
@@ -17,7 +17,7 @@ export const config = {
     },
     database: {
         path: path.join(DATA_DIR, 'okami.db'),
-        mongoUri: process.env.MONGO_URI || ''
+        mongoUri: process.env.MONGODB_URI || process.env.MONGO_URI || ''
     },
     scraping: {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

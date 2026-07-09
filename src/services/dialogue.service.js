@@ -78,14 +78,16 @@ export class DialogueService {
             const manga = results[0];
             const details = await scraperEngine.getMangaDetails(sourceId, manga.url);
             
-            const mangaId = MemoryService.saveManga({
+            const savedManga = await MemoryService.saveManga({
                 title: details.title,
                 slug: mangaName.toLowerCase().replace(/ /g, '-'),
                 coverUrl: details.coverUrl,
+                description: details.description,
                 status: details.status,
                 sourceSite: sourceId,
                 sourceUrl: manga.url
-            }).id;
+            });
+            const mangaId = savedManga._id || savedManga.id;
 
             // حساب الوقت المتوقع
             const chapterCount = details.chapters.length;

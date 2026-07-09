@@ -4,15 +4,15 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/okami';
+const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/okami';
 
 export const connectDB = async () => {
     try {
         mongoose.set('bufferCommands', false); // CRITICAL: fail fast, don't hang
         await mongoose.connect(MONGODB_URI, {
             maxPoolSize: 10,
-            serverSelectionTimeoutMS: 2000, // Faster timeout for healthchecks
-            socketTimeoutMS: 5000,
+            serverSelectionTimeoutMS: 3000,
+            socketTimeoutMS: 10000,
             family: 4
         });
         logger.info('Successfully connected to MongoDB with optimized settings.');
@@ -39,11 +39,13 @@ const mangaSchema = new mongoose.Schema({
     title: String,
     slug: { type: String, unique: true },
     cover_url: String,
+    description: String,
     status: String,
     source_site_key: String,
     source_url: String,
     auto_update: { type: Boolean, default: false },
     aggregation_post_id: String,
+    compilation_post_id: String,
     created_at: { type: Date, default: Date.now },
     updated_at: { type: Date, default: Date.now }
 });

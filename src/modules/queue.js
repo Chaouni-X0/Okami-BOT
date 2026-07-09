@@ -5,6 +5,8 @@ import { ChapterProcessor } from './processor.js';
 import { FacebookPublisher } from './publisher.js';
 import { MemoryService } from '../services/memory.service.js';
 import { sendMessage } from '../services/messenger.js';
+import { config } from '../config/config.js';
+import db from '../database/db.js';
 
 // Number of chapters downloaded, published, and deleted together before
 // moving on to the next group. Keeping this small (2) is what limits how
@@ -139,12 +141,132 @@ class QueueSystemClass {
 
             if (!job.cancelled) {
                 await sendMessage(adminFbId, { text: `🎉 انتهى نشر جميع فصول "${mangaTitle}".` });
+                // Generate and publish the compilation post!
+                await this.createMangaCompilationPost(mangaId, adminFbId);
             }
         } catch (error) {
             logger.error(`[Queue] startMangaPublishing fatal error: ${error.message}`);
             await sendMessage(adminFbId, { text: `❌ توقفت عملية نشر "${mangaTitle}" بسبب خطأ غير متوقع: ${error.message}` });
         } finally {
             this.activeJobs.delete(mangaSlug);
+        }
+    }
+
+    /**
+     * Creates a beautiful, unified compilation post for the manga
+     * containing details, site, cover image, and direct Facebook links to all chapters!
+     */
+    async createMangaCompilationPost(mangaId, adminFbId) {
+        try {
+            logger.info(`[Queue] Creating manga compilation post for mangaId: ${mangaId}`);
+            const manga = await MemoryService.getMangaById(mangaId);
+            if (!manga) {
+                throw new Error('لم يتم العثور على المانهوا في قاعدة البيانات.');
+            }
+
+            const chapters = await MemoryService.getPublishedChapters(mangaId);
+            if (!chapters || chapters.length === 0) {
+                throw new Error('لا توجد فصول منشورة لهذه المانهوا لإنشاء تجميعة.');
+            }
+
+            // Build the compilation text message
+            let compilationMsg = `📚 【 تجميعة الفصول الكاملة 】 📚\n\n`;
+            compilationMsg += `📖 اسم العمل: ${manga.title}\n`;
+            if (manga.description) {
+                compilationMsg += `📝 نبذة عن القصة:\n${manga.description}\n\n`;
+            }
+            
+            const source = config.sources.find(s => s.id === manga.source_site_key);
+            const sourceName = source ? source.name : manga.source_site_key;
+            compilationMsg += `🌐 الموقع المصدر: ${sourceName}\n`;
+            compilationMsg += `🔗 رابط المصدر: ${manga.source_url}\n\n`;
+            compilationMsg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+            compilationMsg += `👇 روابط الفصول المنشورة على صفحتنا:\n\n`;
+
+            chapters.forEach((ch) => {
+                compilationMsg += `🔹 الفصل ${ch.chapter_number}: https://facebook.com/${ch.fb_post_id}\n`;
+            });
+
+            compilationMsg += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
+            compilationMsg += `🐺 نتمنى لكم قراءة ممتعة! لا تنسوا مشاركة المنشور والتفاعل لمساعدتنا على الاستمرار. ❤️`;
+
+            // Publish to Facebook with cover image if available
+            const coverUrl = manga.cover_url || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=400';
+            
+            const compilationPostId = await FacebookPublisher.publishCustomPost(compilationMsg, coverUrl);
+            
+            // Save the compilation post ID to the manga record
+            await MemoryService.updateMangaCompilationPost(mangaId, compilationPostId);
+
+            // Notify admin
+            await sendMessage(adminFbId, {
+                text: `📋 تم بنجاح إنشاء المنشور التجميعي للفصول مضافاً إليه صورة الغلاف!\n🔗 رابط المنشور التجميعي على فيسبوك: https://facebook.com/${compilationPostId}`
+            });
+
+            // After creating a manga compilation post, trigger updating the Master compilation post
+            await this.updateMasterCompilationPost(adminFbId);
+
+        } catch (error) {
+            logger.error(`[Queue] Failed to create manga compilation post: ${error.message}`);
+            await sendMessage(adminFbId, {
+                text: `⚠️ لم نتمكن من إنشاء منشور التجميعة التلقائي للفصول.\nالسبب: ${error.message}`
+            });
+        }
+    }
+
+    /**
+     * Creates/updates a master compilation post containing a directory
+     * of all mangas published on the bot with links to their respective chapter compilation posts.
+     */
+    async updateMasterCompilationPost(adminFbId) {
+        try {
+            logger.info(`[Queue] Generating master manga directory compilation post...`);
+            
+            // Fetch all mangas that have a compilation_post_id
+            let allMangas = [];
+            try {
+                const { Manga: MongooseManga } = await import('../database/mongodb.js');
+                allMangas = await MongooseManga.find({ compilation_post_id: { $exists: true, $ne: null } }).sort({ updated_at: -1 });
+            } catch (error) {
+                allMangas = db.data.manga.filter(m => m.compilation_post_id);
+            }
+
+            if (!allMangas || allMangas.length === 0) {
+                logger.info(`[Queue] No mangas with compilation posts found to include in master compilation.`);
+                return;
+            }
+
+            let masterMsg = `🌟 【 الفهرس الشامل لجميع المانهوات المكتملة والمنشورة 】 🌟\n\n`;
+            masterMsg += `قائمة متكاملة بجميع الأعمال والمانهوات التي قمنا بنشر فصولها وتجميعاتها حتى الآن عبر البوت التلقائي:\n\n`;
+
+            allMangas.forEach((manga, idx) => {
+                const source = config.sources.find(s => s.id === manga.source_site_key);
+                const sourceName = source ? source.name : manga.source_site_key;
+                
+                masterMsg += `${idx + 1}️⃣ ❪ ${manga.title} ❫\n`;
+                masterMsg += `🌐 المصدر: ${sourceName}\n`;
+                masterMsg += `🔗 رابط التجميعة الكاملة للفصول: https://facebook.com/${manga.compilation_post_id}\n\n`;
+            });
+
+            masterMsg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+            masterMsg += `💡 سيتم تحديث هذا الفهرس وتنزيل أعمال ممتعة وجديدة باستمرار! شاركوا الصفحة لمساندتنا 🐺🔥`;
+
+            // We can publish this master post.
+            // Use cover image of the latest completed manga as banner
+            const bannerUrl = allMangas[0].cover_url || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=400';
+            
+            const masterPostId = await FacebookPublisher.publishCustomPost(masterMsg, bannerUrl);
+
+            // Notify admin
+            await sendMessage(adminFbId, {
+                text: `🗂️ تم إنشاء المنشور التجميعي العام لجميع المانهوات بنجاح!\n🔗 رابط منشور الفهرس الشامل على فيسبوك: https://facebook.com/${masterPostId}`
+            });
+
+        } catch (error) {
+            logger.error(`[Queue] Failed to generate master directory compilation post: ${error.message}`);
+            await sendMessage(adminFbId, {
+                text: `⚠️ لم نتمكن من إنشاء منشور الفهرس الشامل للمانهوات.\nالسبب: ${error.message}`
+            });
         }
     }
 
@@ -168,6 +290,10 @@ class QueueSystemClass {
                 }
 
                 const postId = await FacebookPublisher.publishChapter(images, task.customMessage);
+
+                if (task.mangaId && task.chapterNumber) {
+                    await MemoryService.markChapterAsPublished(task.mangaId, task.chapterNumber, postId);
+                }
 
                 if (task.adminFbId) {
                     await sendMessage(task.adminFbId, {
