@@ -85,54 +85,46 @@ class QueueSystemClass {
                 }
 
                 const batch = pending.slice(i, i + PUBLISH_BATCH_SIZE);
-                const prepared = [];
 
-                // 1) Download + slice images locally for every chapter in this batch.
+                // Process each chapter sequentially and clean up immediately to keep peak disk space at its absolute minimum.
                 for (const ch of batch) {
+                    let chapterDir = null;
+                    let images = null;
                     try {
                         const imageUrls = await scraperEngine.parseChapterImages(sourceId, ch.url);
                         if (!imageUrls || imageUrls.length === 0) {
                             throw new Error('لم يتم العثور على صور لهذا الفصل.');
                         }
-                        const { chapterDir, images } = await this.processor.processChapter(mangaSlug, ch.number, imageUrls);
+                        
+                        const processed = await this.processor.processChapter(mangaSlug, ch.number, imageUrls);
+                        chapterDir = processed.chapterDir;
+                        images = processed.images;
+                        
                         if (!images || images.length === 0) {
                             throw new Error('فشلت معالجة/تقسيم صور الفصل.');
                         }
-                        prepared.push({ chapter: ch, chapterDir, images, error: null });
-                    } catch (err) {
-                        logger.error(`[Queue] Prepare failed for ${mangaTitle} ${ch.name}: ${err.message}`);
-                        prepared.push({ chapter: ch, chapterDir: null, images: null, error: err.message });
-                    }
-                }
 
-                // 2) Publish each successfully-prepared chapter in this batch.
-                for (const item of prepared) {
-                    if (item.error) {
-                        this.registerFailure();
-                        await sendMessage(adminFbId, { text: `❌ فشل تحضير "${mangaTitle} - ${item.chapter.name}"\nالسبب: ${item.error}` });
-                        continue;
-                    }
-                    try {
                         const message = baseMessage
-                            ? baseMessage.replace('{chapter}', item.chapter.name)
-                            : `📖 ${mangaTitle}\n📌 الفصل: ${item.chapter.name}`;
-                        const postId = await FacebookPublisher.publishChapter(item.images, message);
-                        await MemoryService.markChapterAsPublished(mangaId, item.chapter.number, postId);
+                            ? baseMessage.replace('{chapter}', ch.name)
+                            : `📖 ${mangaTitle}\n📌 الفصل: ${ch.name}`;
+                            
+                        const postId = await FacebookPublisher.publishChapter(images, message);
+                        await MemoryService.markChapterAsPublished(mangaId, ch.number, postId);
+                        
                         await sendMessage(adminFbId, {
-                            text: `✅ تم نشر "${mangaTitle} - ${item.chapter.name}"\n🔗 https://facebook.com/${postId}`
+                            text: `✅ تم نشر "${mangaTitle} - ${ch.name}"\n🔗 https://facebook.com/${postId}`
                         });
                         this.registerSuccess();
                     } catch (err) {
                         this.registerFailure();
-                        logger.error(`[Queue] Publish failed for ${mangaTitle} ${item.chapter.name}: ${err.message}`);
-                        await sendMessage(adminFbId, { text: `❌ فشل نشر "${mangaTitle} - ${item.chapter.name}"\nالسبب: ${err.message}` });
+                        logger.error(`[Queue] Process/Publish failed for ${mangaTitle} ${ch.name}: ${err.message}`);
+                        await sendMessage(adminFbId, { text: `❌ فشل نشر "${mangaTitle} - ${ch.name}"\nالسبب: ${err.message}` });
+                    } finally {
+                        // Cleanup immediately
+                        if (chapterDir) {
+                            this.processor.cleanup(chapterDir);
+                        }
                     }
-                }
-
-                // 3) Delete every chapter directory in this batch, published or not,
-                // so nothing lingers on disk before the next batch starts.
-                for (const item of prepared) {
-                    if (item.chapterDir) this.processor.cleanup(item.chapterDir);
                 }
 
                 // Respect a global pause if too many consecutive failures happened.

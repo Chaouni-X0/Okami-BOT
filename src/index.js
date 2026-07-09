@@ -1,103 +1,119 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
-import cors from 'cors';
-import scraperRoutes from './routes/scraperRoutes.js';
-import adminRoutes from './routes/adminRoutes.js';
-import webhookRoutes from './routes/webhookRoutes.js';
+import { config } from './config/config.js';
+import { ChatService } from './services/chat.service.js';
+import { FacebookPublisher } from './modules/publisher.js';
+import { AutomationService } from './services/automation.service.js';
+import logger from './utils/logger.js';
+import { scraperManager } from './scraper/scraperManager.js';
 
-dotenv.config();
+// Global Error Handling to prevent crashes
+process.on('uncaughtException', (err) => {
+    logger.error(`[CRITICAL] Uncaught Exception: ${err.message}`);
+    logger.error(err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error(`[CRITICAL] Unhandled Rejection at: ${promise}, reason: ${reason}`);
+});
+
+const chatService = new ChatService();
+const automationService = new AutomationService();
 
 const app = express();
-
-/**
- * 🛠️ 1. التكوين الديناميكي للمنفذ (CRITICAL FOR RAILWAY)
- * Railway sets process.env.PORT dynamically. NEVER hardcode 8080.
- */
-const PORT = process.env.PORT || 3000;
-
-// Middleware
-app.use(cors());
 app.use(express.json());
 
-// 2. مسارات التطبيق
-app.use('/api/scraper', scraperRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/webhook', webhookRoutes);
+// Root route
+app.get('/', (req, res) => {
+    res.status(200).json({ status: 'ok', message: '🐺 Okami Bot is alive!' });
+});
 
-/**
- * 🎯 3. مسار اختبار الصحة (Health Check)
- * Railway requires a fast 200 OK response to avoid SIGTERM.
- */
-app.get('/health', (req, res) => res.status(200).send('OK'));
-app.get('/healthz', (req, res) => res.status(200).send('OK'));
-
-app.get('/status', (req, res) => {
-    res.status(200).json({
-        status: 'UP',
-        db: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
-        uptime: process.uptime()
+// Production-ready Health Check
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'online', 
+        project: '🐺 Okami Bot', 
+        version: '7.0.0 (Node-Only Optimized)',
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage(),
+        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
     });
 });
 
-app.get('/', (req, res) => res.send('🚀 Okami Bot Production API is ONLINE'));
+// Webhook GET for verification
+app.get('/webhook', (req, res) => {
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
 
-/**
- * 🌐 4. تشغيل الخادم مع الربط بـ 0.0.0.0
- * Binding to 0.0.0.0 is mandatory for container visibility.
- */
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ Server is listening on dynamic port: ${PORT}`);
+    if (mode === 'subscribe' && token === config.facebook.verifyToken) {
+        logger.info('Webhook verified successfully.');
+        res.status(200).send(challenge);
+    } else {
+        logger.warn('Webhook verification failed. Token mismatch.');
+        res.sendStatus(403);
+    }
 });
 
-/**
- * 🍃 5. الاتصال بقاعدة البيانات في الخلفية
- * We start listening first, then connect to DB to pass health checks faster.
- */
-const connectDatabase = async () => {
-    try {
-        const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
-        if (!uri) {
-            console.error('❌ MONGODB_URI is missing from environment variables!');
-            return;
-        }
-        
-        // Sanitize URI (remove quotes/spaces)
-        const sanitizedUri = uri.replace(/['"]/g, '').trim();
-        
-        await mongoose.connect(sanitizedUri, {
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
+// Webhook POST for receiving messages
+app.post('/webhook', (req, res) => {
+    const body = req.body;
+
+    if (body.object === 'page') {
+        res.status(200).send('EVENT_RECEIVED');
+
+        body.entry.forEach(entry => {
+            if (entry.messaging) {
+                entry.messaging.forEach(event => {
+                    if (event.message && event.message.text) {
+                        setImmediate(async () => {
+                            try {
+                                const sender_id = event.sender.id;
+                                const text = event.message.text;
+                                logger.info(`Processing message from ${sender_id}: ${text}`);
+                                const responseText = await chatService.handleMessage(sender_id, text);
+                                if (responseText) {
+                                    if (typeof responseText === 'string') {
+                                        await FacebookPublisher.sendDirectMessage(sender_id, { text: responseText });
+                                    } else {
+                                        await FacebookPublisher.sendDirectMessage(sender_id, responseText);
+                                    }
+                                }
+                            } catch (error) {
+                                logger.error(`Error processing webhook event: ${error.message}`);
+                            }
+                        });
+                    }
+                });
+            }
         });
-        console.log('🍃 MongoDB Connected Successfully');
-    } catch (err) {
-        console.error('❌ MongoDB Connection Error:', err.message);
+    } else {
+        res.sendStatus(404);
     }
-};
+});
 
-connectDatabase();
+const PORT = 3000;
+const server = app.listen(PORT, '0.0.0.0', () => {
+    logger.info(`Okami Bot API running on port ${PORT}`);
 
-/**
- * 🛡️ 6. معالجة الإغلاق الآمن (Graceful Shutdown)
- * Handle Railway's SIGTERM signal to close connections properly.
- */
-const gracefulShutdown = (signal) => {
-    console.log(`\n${signal} received. Shutting down gracefully...`);
-    server.close(async () => {
-        console.log('📡 HTTP server closed.');
-        if (mongoose.connection.readyState !== 0) {
-            await mongoose.connection.close();
-            console.log('🍃 MongoDB connection closed.');
+    // Async init
+    setImmediate(async () => {
+        try {
+            await automationService.init();
+            logger.info('Automation Service initialized successfully.');
+        } catch (e) {
+            logger.error(`Failed to init automation: ${e.message}`);
         }
+    });
+});
+
+// Graceful Shutdown
+process.on('SIGTERM', async () => {
+    logger.info('SIGTERM received. Shutting down gracefully...');
+    await scraperManager.closeAll();
+    await mongoose.connection.close();
+    server.close(() => {
+        logger.info('Process terminated.');
         process.exit(0);
     });
-
-    // Force exit after 10s if connections hang
-    setTimeout(() => {
-        console.error('Forceful shutdown after timeout');
-        process.exit(1);
-    }, 10000);
-};
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+});

@@ -4,62 +4,73 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-/**
- * Robust MongoDB Connection with Auto-Sanitization
- */
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/okami';
+
 export const connectDB = async () => {
-    // 1. Force Clean URI (remove any spaces or quotes)
-    const rawUri = process.env.MONGODB_URI || process.env.MONGO_URI || '';
-    const MONGODB_URI = rawUri.replace(/['"]/g, '').trim();
-
-    // 2. Validate Protocol
-    if (!MONGODB_URI) {
-        logger.error('❌ [ERROR] MONGODB_URI is not defined in environment variables.');
-        return false;
-    }
-
-    if (!MONGODB_URI.startsWith('mongodb://') && !MONGODB_URI.startsWith('mongodb+srv://')) {
-        logger.error(`❌ [ERROR] Invalid MongoDB Scheme. URI starts with: "${MONGODB_URI.substring(0, 15)}..."`);
-        return false;
-    }
-
     try {
-        logger.info('⏳ Attempting to connect to MongoDB...');
-        
-        // Disable buffering to prevent operations from hanging if DB is down
-        mongoose.set('bufferCommands', false);
-        
+        mongoose.set('bufferCommands', false); // CRITICAL: fail fast, don't hang
         await mongoose.connect(MONGODB_URI, {
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
+            maxPoolSize: 10,
+            serverSelectionTimeoutMS: 3000,
+            socketTimeoutMS: 10000,
             family: 4
         });
-        
-        logger.info('✅ MongoDB Connected Successfully');
-        return true;
+        logger.info('Successfully connected to MongoDB with optimized settings.');
     } catch (error) {
-        logger.error(`❌ MongoDB Connection Failed: ${error.message}`);
-        return false; // Return false instead of process.exit to keep the server alive for healthchecks
+        logger.warn(`[AI Studio] MongoDB connection failed: ${error.message}. Mocks/offline mode will handle requests.`);
     }
 };
 
-// Monitor Runtime Errors
-mongoose.connection.on('error', err => {
-    logger.error(`❌ MongoDB Runtime Error: ${err.message}`);
+// User Schema
+const userSchema = new mongoose.Schema({
+    fb_id: { type: String, unique: true, required: true },
+    name: String,
+    xp: { type: Number, default: 0 },
+    level: { type: Number, default: 1 },
+    points: { type: Number, default: 0 },
+    streak: { type: Number, default: 0 },
+    last_active: Date,
+    guild_id: Number,
+    created_at: { type: Date, default: Date.now }
 });
 
-// Schemas
-const userSchema = new mongoose.Schema({ fb_id: { type: String, unique: true }, name: String });
-const mangaSchema = new mongoose.Schema({ title: String, slug: { type: String, unique: true } });
-
-const chapterSchema = new mongoose.Schema({
-    mangaId: { type: mongoose.Schema.Types.ObjectId, ref: 'Manga' },
-    chapterNumber: String,
+// Manga Schema
+const mangaSchema = new mongoose.Schema({
     title: String,
-    url: String,
-    published: { type: Boolean, default: false }
+    slug: { type: String, unique: true },
+    cover_url: String,
+    status: String,
+    source_site_key: String,
+    source_url: String,
+    auto_update: { type: Boolean, default: false },
+    aggregation_post_id: String,
+    created_at: { type: Date, default: Date.now },
+    updated_at: { type: Date, default: Date.now }
+});
+
+// Chapter Schema
+const chapterSchema = new mongoose.Schema({
+    manga_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Manga' },
+    chapter_number: Number,
+    chapter_url: String,
+    fb_post_id: String,
+    is_published: { type: Boolean, default: false },
+    published_at: Date
+});
+chapterSchema.index({ manga_id: 1, chapter_number: 1 }, { unique: true });
+
+// Queue Schema
+const queueSchema = new mongoose.Schema({
+    manga_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Manga' },
+    chapter_number: Number,
+    chapter_url: String,
+    source_key: String,
+    admin_fb_id: String,
+    status: { type: String, default: 'pending' }, // pending, processing, completed, failed
+    created_at: { type: Date, default: Date.now }
 });
 
 export const User = mongoose.model('User', userSchema);
 export const Manga = mongoose.model('Manga', mangaSchema);
 export const Chapter = mongoose.model('Chapter', chapterSchema);
+export const Queue = mongoose.model('Queue', queueSchema);

@@ -14,11 +14,18 @@ export class ChapterProcessor {
         try {
             const image = sharp(inputBuffer);
             const metadata = await image.metadata();
-            const maxHeight = config.settings?.maxImageHeight || 1500;
+            const maxHeight = config.settings?.maxImageHeight || 1600;
+            
+            // Output options optimized for highest clarity and minimum compression artifacts
+            const jpegOptions = {
+                quality: 92,
+                chromaSubsampling: '4:4:4',
+                force: true
+            };
             
             if (metadata.height <= maxHeight) {
                 const imgPath = path.join(outputDir, `page-${index}.jpg`);
-                await image.jpeg({ quality: 85 }).toFile(imgPath);
+                await image.jpeg(jpegOptions).toFile(imgPath);
                 return [imgPath];
             }
 
@@ -36,7 +43,7 @@ export class ChapterProcessor {
                         width: metadata.width,
                         height: partHeight
                     })
-                    .jpeg({ quality: 85 })
+                    .jpeg(jpegOptions)
                     .toFile(partPath);
                 
                 parts.push(partPath);

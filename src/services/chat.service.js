@@ -7,6 +7,13 @@ import logger from '../utils/logger.js';
 import { FacebookPublisher } from '../modules/publisher.js';
 import { sendMessage } from './messenger.js';
 
+import db from '../database/db.js';
+import { GamificationService } from './gamification.service.js';
+import { CommunityService } from './community.service.js';
+import { EventService } from './event.service.js';
+import { ReadingService } from './reading.service.js';
+import { MissionService } from './mission.service.js';
+
 export class ChatService {
     constructor() {
         this.sessions = new Map(); // fbId -> { step, data }
@@ -27,6 +34,238 @@ export class ChatService {
                     : `⚠️ لا توجد عملية نشر جارية بهذا المعرف: "${slug}"`
             });
             return;
+        }
+
+        const state = this.sessions.get(fbId) || { step: 'START' };
+
+        // Interactive Text-Command System (works globally for all states except when waiting for activation password)
+        const cleanCmd = text.replace(/^-+/g, '').replace(/^\/+/g, '').trim();
+        const cmdLower = cleanCmd.toLowerCase();
+        const isAwaitingPassword = state.step === 'AWAITING_PASSWORD';
+
+        if (!isAwaitingPassword) {
+            // Help Command
+            if (['help', 'مساعدة', 'تعليمات', 'اوامر', 'أوامر'].includes(cmdLower)) {
+                const helpMsg = `🤖 *قائمة الأوامر التفاعلية المتاحة لقراء أوكامي:*
+
+👤 *ملفي* أو *البطاقة*: لعرض تفاصيل حسابك ومستواك ونقاطك.
+📅 *يومي* أو *checkin*: لتسجيل الدخول اليومي والحصول على مكافآت.
+🏆 *الترتيب* أو *ترتيب*: لعرض قائمة الأوائل والمتصدرين على البوت.
+⚔️ *الكلانات* أو *الفرق*: لعرض الكلان والفرق المتنافسة ونقاطها.
+🛡️ *انضم [اسم الكلان]*: للانضمام لكلان معين (مثال: \`انضم أوكامي\`).
+🎯 *المهام*: لعرض مهامك اليومية النشطة والتقدم المحرز.
+📥 *طلب [اسم المانجا]*: لتقديم طلب ترجمة أو نشر عمل جديد على الصفحة.
+🗳️ *تصويت [معرف الطلب]*: للتصويت على طلب معلق ومساندته.
+📋 *الطلبات*: لعرض قائمة طلبات المانجا الحالية من الأعضاء.
+💡 *توصية*: اقتراح أعمال جديدة ممتازة ومشهورة لقراءتها.
+📖 *مستمر*: عرض الفصول التي كنت تقرأها مؤخراً لمواصلة الاستمتاع.
+
+🔄 للعودة للقائمة الرئيسية للبوت في أي وقت، أرسل: **مرحبا**`;
+                await sendMessage(fbId, { text: helpMsg });
+                return;
+            }
+
+            // Profile Command
+            if (['ملفي', 'البطاقة', 'الملف', 'profile', 'stats', 'id'].includes(cmdLower)) {
+                const profile = await UserService.getProfile(fbId);
+                const xpNeeded = profile.level * 100;
+                const percent = Math.min(100, Math.floor((profile.xp / xpNeeded) * 100));
+                
+                // Draw a beautiful progress bar
+                const barSize = 10;
+                const filledSize = Math.floor((percent / 100) * barSize);
+                const bar = '▓'.repeat(filledSize) + '░'.repeat(barSize - filledSize);
+
+                const profileMsg = `👤 *ملفك الشخصي لدى أوكامي:*
+
+🏆 اللقب: *${profile.rank_title}*
+⭐ المستوى: *${profile.level}*
+📊 الـ XP: *${profile.xp}/${xpNeeded}*
+📈 التقدم: [${bar}] ${percent}%
+🔥 الـ Streak: *${profile.streak || 0}* أيام متواصلة
+💰 النقاط: *${profile.points}* نقطة ذهبية
+
+🛡️ القبيلة الحالية: *${profile.guild_name || 'لا يوجد'}*
+📅 تاريخ الانضمام: *${profile.created_at ? profile.created_at.split('T')[0] : 'اليوم'}*
+
+_(تفاعل أكثر واقرأ الفصول لرفع مستواك وربح الجوائز! 🐺)_`;
+                await sendMessage(fbId, { text: profileMsg });
+                return;
+            }
+
+            // Daily Checkin Command
+            if (['يومي', 'checkin', 'تسجيل'].includes(cmdLower)) {
+                const res = await GamificationService.dailyCheckIn(fbId);
+                if (res.success) {
+                    const checkinMsg = `📅 *تم تسجيل حضورك اليومي بنجاح!* 🎉
+
+🔥 الـ Streak الحالي: *${res.streak}* أيام متتالية!
+💰 الجائزة المضافة: *+${res.bonus}* نقطة ذهبية و *+20 XP*!
+
+💡 واصل الدخول يومياً لزيادة الـ Streak ومضاعفة مكافآتك!`;
+                    await sendMessage(fbId, { text: checkinMsg });
+                } else {
+                    await sendMessage(fbId, { text: `⚠️ *لقد قمت بتسجيل الدخول اليومي بالفعل اليوم!*\nعد غداً للحفاظ على سلسلتك النشطة ومضاعفة مكافآتك.` });
+                }
+                return;
+            }
+
+            // Leaderboard Command
+            if (['الترتيب', 'ترتيب', 'leaderboard', 'rank', 'top'].includes(cmdLower)) {
+                const topUsers = db.prepare('SELECT fb_id, name, points, level, rank_title FROM users ORDER BY points DESC LIMIT 5').all();
+                if (!topUsers.length) {
+                    await sendMessage(fbId, { text: "📭 لا يوجد متصدرون مسجلون حالياً. كن أول المتصدرين!" });
+                } else {
+                    let msg = `🏆 *قائمة المتصدرين في أوكامي (Top 5):* 🐺\n\n`;
+                    const medals = ['🥇', '🥈', '🥉', '✨', '⚡'];
+                    topUsers.forEach((user, i) => {
+                        const medal = medals[i] || '🎖️';
+                        msg += `${medal} *${user.name || 'مقاتل أوكامي'}* — مستوى ${user.level}\n💰 النقاط: *${user.points}* | اللقب: *${user.rank_title}*\n\n`;
+                    });
+                    await sendMessage(fbId, { text: msg });
+                }
+                return;
+            }
+
+            // Guilds Command
+            if (['الكلانات', 'الفرق', 'guilds', 'clans'].includes(cmdLower)) {
+                const guilds = EventService.getGuildLeaderboard();
+                let msg = `⚔️ *القبائل والكلانات المتنافسة في أوكامي:* 🛡️\n\n`;
+                guilds.forEach((g, i) => {
+                    msg += `${i + 1}️⃣ *كلان ${g.name}* \n💰 النقاط الإجمالية: *${g.total_points}* \n👥 عدد المحاربين: *${g.member_count}* أعضاء\n\n`;
+                });
+                msg += `💡 للانضمام لكلان معين والمساهمة بنقاطك، أرسل: *انضم [اسم الكلان]*`;
+                await sendMessage(fbId, { text: msg });
+                return;
+            }
+
+            // Join Guild Command
+            if (cleanCmd.startsWith('انضم ') || cleanCmd.startsWith('الانضمام ')) {
+                const guildName = cleanCmd.split(' ').slice(1).join(' ').trim();
+                if (!guildName) {
+                    await sendMessage(fbId, { text: "⚠️ يرجى تحديد اسم الكلان بشكل صحيح. مثال: \`انضم أوكامي\`" });
+                    return;
+                }
+                try {
+                    await EventService.joinGuild(fbId, guildName);
+                    await sendMessage(fbId, { text: `🛡️ *أهلاً بك في الكلان!* تم الانضمام لكلان *"${guildName}"* بنجاح!\nالآن، أي نقاط تربحها ستضاف تلقائياً لرصيد كلانك للمنافسة الكبرى! 🔥` });
+                } catch (e) {
+                    await sendMessage(fbId, { text: `❌ *الكلان "${guildName}" غير موجود!* أرسل "الكلانات" لعرض الكلانات المتاحة حالياً.` });
+                }
+                return;
+            }
+
+            // Missions Command
+            if (['المهام', 'missions', 'daily'].includes(cmdLower)) {
+                await MissionService.generateDailyMissions(fbId);
+                const ongoing = db.prepare(`
+                    SELECT um.*, m.title, m.description, m.reward_points 
+                    FROM user_missions um
+                    JOIN missions m ON um.mission_id = m.id
+                    WHERE um.user_fb_id = ?
+                `).all(fbId);
+
+                let msg = `🎯 *مهامك اليومية النشطة اليوم:* 🐺\n\n`;
+                ongoing.forEach((m, i) => {
+                    const statusIcon = m.status === 'completed' ? '✅ [مكتملة]' : '⏳ [قيد التقدم]';
+                    msg += `${i + 1}️⃣ *${m.title}* — ${statusIcon}\n📝 الوصف: ${m.description}\n💰 المكافأة: *+${m.reward_points}* نقطة ذهبية و *+50 XP*!\n\n`;
+                });
+                msg += `💡 يتم تحديث مهامك تلقائياً عند قيامك بالنشاطات (قراءة، تصويت، تعليق)!`;
+                await sendMessage(fbId, { text: msg });
+                return;
+            }
+
+            // Request Command
+            if (cleanCmd.startsWith('طلب ') || cleanCmd.startsWith('أطلب ')) {
+                const mangaTitle = cleanCmd.split(' ').slice(1).join(' ').trim();
+                if (!mangaTitle) {
+                    await sendMessage(fbId, { text: "⚠️ يرجى إدخال اسم المانجا المراد طلبها بشكل صحيح. مثال: \`طلب Solo Leveling\`" });
+                    return;
+                }
+                const reqId = await CommunityService.createRequest(fbId, mangaTitle);
+                await MissionService.updateMissionProgress(fbId, 'vote'); // Trigger vote/request mission progress
+                
+                const requestMsg = `📥 *تم تسجيل طلبك بنجاح!* 
+
+📖 اسم العمل: *"${mangaTitle}"*
+📌 رقم الطلب للتصويت: *#${reqId}*
+💰 المكافأة المكتسبة: *+10 XP* و *+5 نقاط*!
+
+📢 أخبر أصدقاءك بالطلب واطلب منهم إرسال: \`تصويت ${reqId}\` لجمع التصويتات وترجمة ونشر العمل فوراً!`;
+                await sendMessage(fbId, { text: requestMsg });
+                return;
+            }
+
+            // Vote Command
+            if (cleanCmd.startsWith('تصويت ') || cleanCmd.startsWith('صوت ')) {
+                const reqIdStr = cleanCmd.split(' ').slice(1).join(' ').trim();
+                const reqId = parseInt(reqIdStr, 10);
+                if (isNaN(reqId)) {
+                    await sendMessage(fbId, { text: "⚠️ يرجى كتابة رقم الطلب للتصويت بشكل صحيح. مثال: \`تصويت 3\`" });
+                    return;
+                }
+                const res = await CommunityService.voteForRequest(fbId, reqId);
+                if (res.success) {
+                    await MissionService.updateMissionProgress(fbId, 'vote');
+                    await sendMessage(fbId, { text: `🗳️ *شكراً لتصويتك!* تم تسجيل تصويتك للطلب بنجاح.\n📊 عدد التصويتات الحالي للعمل: *${res.currentVotes}* أصوات.\n💰 المكافأة: *+5 XP* و *+2 نقاط*!` });
+                } else {
+                    await sendMessage(fbId, { text: `⚠️ *لقد قمت بالتصويت لهذا الطلب مسبقاً!* يمكنك التصويت لطلبات أخرى لمساندة الأعضاء.` });
+                }
+                return;
+            }
+
+            // Requests List Command
+            if (['الطلبات', 'requests', 'votes_list'].includes(cmdLower)) {
+                const list = CommunityService.getTopRequests();
+                if (!list.length) {
+                    await sendMessage(fbId, { text: "📋 قائمة الطلبات فارغة حالياً. أرسل: *طلب [اسم المانجا]* لتكون أول من يطلب!" });
+                } else {
+                    let msg = `📋 *قائمة طلبات المانجا الأكثر تصويتاً:* 🗳️\n\n`;
+                    list.forEach((r, i) => {
+                        msg += `${i + 1}️⃣ *${r.manga_title}* (طلب #${r.id})\n📊 عدد التصويتات: *${r.votes}* أصوات\n👉 للتصويت له أرسل: \`تصويت ${r.id}\`\n\n`;
+                    });
+                    await sendMessage(fbId, { text: msg });
+                }
+                return;
+            }
+
+            // Recommendation Command
+            if (['توصية', 'توصيات', 'recommend', 'suggestion'].includes(cmdLower)) {
+                const recs = await ReadingService.getSmartRecommendations(fbId);
+                let msg = `💡 *ترشيحات وتوصيات أوكامي الحصرية لقراءتها اليوم:* 📖\n\n`;
+                if (!recs.length) {
+                    // Seeding standard recommendations if none parsed yet
+                    const staticRecs = [
+                        { title: 'Solo Leveling', desc: 'بوابة الصيادين وظهور الوحوش، ومغامرة البطل الأضعف ليصبح الأقوى إطلاقاً.' },
+                        { title: 'One Piece', desc: 'أعظم قصة قراصنة ومغامرة شيقة حول البحث عن الكنز الأسطوري والحرية المطلقة.' }
+                    ];
+                    staticRecs.forEach((r, i) => {
+                        msg += `${i + 1}️⃣ *${r.title}* \n📝 نبذة: ${r.desc}\n\n`;
+                    });
+                } else {
+                    recs.forEach((r, i) => {
+                        msg += `${i + 1}️⃣ *${r.title}* \n📝 نبذة: ${r.description ? r.description.substring(0, 150) + '...' : 'عمل أسطوري يستحق المتابعة.'}\n\n`;
+                    });
+                }
+                msg += `🐺 استمتع بالقراءة ورافقنا في المغامرة!`;
+                await sendMessage(fbId, { text: msg });
+                return;
+            }
+
+            // Continue Reading Command
+            if (['مستمر', 'متابعة', 'continue'].includes(cmdLower)) {
+                const history = await ReadingService.getContinueReading(fbId);
+                if (!history.length) {
+                    await sendMessage(fbId, { text: "📖 لا يوجد سجل قراءة لك حالياً. أرسل 'مرحبا' ثم اختر وضع القارئ وابدأ جولتك الممتعة!" });
+                } else {
+                    let msg = `📖 *متابعة القراءة - واصل مغامرتك من حيث توقفت:* 🐺\n\n`;
+                    history.forEach((h, i) => {
+                        msg += `${i + 1}️⃣ *${h.title}* \n📌 آخر فصل قرأته: *الفصل ${h.last_chapter}*\n⏰ في: ${h.updated_at ? h.updated_at.split('T')[0] : 'مؤخراً'}\n\n`;
+                    });
+                    await sendMessage(fbId, { text: msg });
+                }
+                return;
+            }
         }
 
         // Check for greeting or reset to restart the session
