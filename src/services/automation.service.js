@@ -15,7 +15,7 @@ export class AutomationService {
         this.loadTrackedManga();
         setInterval(() => this.checkUpdates(), this.interval);
         // Run once on start
-        this.checkUpdates();
+        setTimeout(() => this.checkUpdates(), 10000);
     }
 
     loadTrackedManga() {
