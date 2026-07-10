@@ -52,7 +52,7 @@ const mangaSchema = new mongoose.Schema({
 
 // Chapter Schema
 const chapterSchema = new mongoose.Schema({
-    manga_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Manga' },
+    manga_id: { type: mongoose.Schema.Types.Mixed, ref: 'Manga' },
     chapter_number: Number,
     chapter_url: String,
     fb_post_id: String,
@@ -63,7 +63,7 @@ chapterSchema.index({ manga_id: 1, chapter_number: 1 }, { unique: true });
 
 // Queue Schema
 const queueSchema = new mongoose.Schema({
-    manga_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Manga' },
+    manga_id: { type: mongoose.Schema.Types.Mixed, ref: 'Manga' },
     chapter_number: Number,
     chapter_url: String,
     source_key: String,

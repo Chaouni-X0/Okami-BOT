@@ -31,7 +31,14 @@ app.get('/', (req, res) => {
 
 // Production-ready Health Check
 app.get('/health', (req, res) => {
-    res.status(200).send('OK');
+    res.json({ 
+        status: 'online', 
+        project: '🐺 Okami Bot', 
+        version: '7.0.0 (Node-Only Optimized)',
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage(),
+        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    });
 });
 
 // Webhook GET for verification

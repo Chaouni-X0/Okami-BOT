@@ -90,7 +90,14 @@ export class BaseScraper {
         }
     }
 
+    shouldMock() {
+        return process.env.ALLOW_MOCK_DATA === 'true';
+    }
+
     generateMockSearchResults(query, sourceKey, sourceName) {
+        if (!this.shouldMock()) {
+            throw new Error(`[${sourceName}] فشل البحث: الموقع المصدر يمنع الطلبات حالياً بسبب حماية Cloudflare أو عطل فني في السيرفر.`);
+        }
         logger.info(`[${sourceName}] Generating beautiful mock search results for: "${query}"`);
         // List of stunning covers to select from
         const covers = [
@@ -115,6 +122,9 @@ export class BaseScraper {
     }
 
     generateMockMangaInfo(url, sourceKey) {
+        if (!this.shouldMock()) {
+            throw new Error(`[${this.sourceName}] فشل جلب تفاصيل العمل: الموقع المصدر يمنع الطلبات حالياً بسبب حماية Cloudflare أو عطل فني في السيرفر.`);
+        }
         const title = this.extractTitleFromUrl(url);
         logger.info(`[${this.sourceName}] Generating beautiful mock manga info for: "${title}"`);
         return {
@@ -127,6 +137,9 @@ export class BaseScraper {
     }
 
     generateMockChapters(url, sourceKey) {
+        if (!this.shouldMock()) {
+            throw new Error(`[${this.sourceName}] فشل الحصول على فصول العمل: الموقع المصدر يمنع الطلبات حالياً بسبب حماية Cloudflare أو عطل فني في السيرفر.`);
+        }
         const title = this.extractTitleFromUrl(url);
         logger.info(`[${this.sourceName}] Generating beautiful mock chapters for: "${title}"`);
         const chapters = [];
@@ -142,6 +155,9 @@ export class BaseScraper {
     }
 
     generateMockChapterImages(url, sourceKey) {
+        if (!this.shouldMock()) {
+            throw new Error(`[${this.sourceName}] فشل جلب صور الفصل: الموقع المصدر يمنع الطلبات حالياً بسبب حماية Cloudflare أو عطل فني في السيرفر.`);
+        }
         logger.info(`[${this.sourceName}] Generating beautiful mock chapter images for: "${url}"`);
         // List of stunning panels mimicking manga layout
         return [

@@ -37,7 +37,7 @@ export class ChatService {
             return;
         }
 
-        const state = this.sessions.get(fbId) || { step: 'START' };
+        let state = this.sessions.get(fbId) || { step: 'START' };
 
         // Interactive Text-Command System (works globally for all states except when waiting for activation password)
         const cleanCmd = text.replace(/^-+/g, '').replace(/^\/+/g, '').trim();
@@ -276,6 +276,8 @@ _(تفاعل أكثر واقرأ الفصول لرفع مستواك وربح ا�
             await sendMessage(fbId, { text: welcome });
             return;
         }
+
+        state = this.sessions.get(fbId) || { step: 'START' };
 
         try {
             switch (state.step) {

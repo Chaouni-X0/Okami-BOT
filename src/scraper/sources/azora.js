@@ -2,7 +2,7 @@ import { BaseScraper } from '../baseScraper.js';
 
 export class AzoraScraper extends BaseScraper {
     constructor() {
-        super('Azora', 'https://azorafly.com');
+        super('Azora', 'https://azoramanga.net');
     }
 
     async search(query) {

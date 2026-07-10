@@ -199,18 +199,22 @@ class QueueSystemClass {
             await MemoryService.updateMangaCompilationPost(mangaId, compilationPostId);
 
             // Notify admin
-            await sendMessage(adminFbId, {
-                text: `📋 تم بنجاح إنشاء المنشور التجميعي للفصول مضافاً إليه صورة الغلاف!\n🔗 رابط المنشور التجميعي على فيسبوك: https://facebook.com/${compilationPostId}`
-            });
+            if (adminFbId) {
+                await sendMessage(adminFbId, {
+                    text: `📋 تم بنجاح إنشاء المنشور التجميعي للفصول مضافاً إليه صورة الغلاف!\n🔗 رابط المنشور التجميعي على فيسبوك: https://facebook.com/${compilationPostId}`
+                });
+            }
 
             // After creating a manga compilation post, trigger updating the Master compilation post
             await this.updateMasterCompilationPost(adminFbId);
 
         } catch (error) {
             logger.error(`[Queue] Failed to create manga compilation post: ${error.message}`);
-            await sendMessage(adminFbId, {
-                text: `⚠️ لم نتمكن من إنشاء منشور التجميعة التلقائي للفصول.\nالسبب: ${error.message}`
-            });
+            if (adminFbId) {
+                await sendMessage(adminFbId, {
+                    text: `⚠️ لم نتمكن من إنشاء منشور التجميعة التلقائي للفصول.\nالسبب: ${error.message}`
+                });
+            }
         }
     }
 
@@ -258,15 +262,19 @@ class QueueSystemClass {
             const masterPostId = await FacebookPublisher.publishCustomPost(masterMsg, bannerUrl);
 
             // Notify admin
-            await sendMessage(adminFbId, {
-                text: `🗂️ تم إنشاء المنشور التجميعي العام لجميع المانهوات بنجاح!\n🔗 رابط منشور الفهرس الشامل على فيسبوك: https://facebook.com/${masterPostId}`
-            });
+            if (adminFbId) {
+                await sendMessage(adminFbId, {
+                    text: `🗂️ تم إنشاء المنشور التجميعي العام لجميع المانهوات بنجاح!\n🔗 رابط منشور الفهرس الشامل على فيسبوك: https://facebook.com/${masterPostId}`
+                });
+            }
 
         } catch (error) {
             logger.error(`[Queue] Failed to generate master directory compilation post: ${error.message}`);
-            await sendMessage(adminFbId, {
-                text: `⚠️ لم نتمكن من إنشاء منشور الفهرس الشامل للمانهوات.\nالسبب: ${error.message}`
-            });
+            if (adminFbId) {
+                await sendMessage(adminFbId, {
+                    text: `⚠️ لم نتمكن من إنشاء منشور الفهرس الشامل للمانهوات.\nالسبب: ${error.message}`
+                });
+            }
         }
     }
 
@@ -293,6 +301,12 @@ class QueueSystemClass {
 
                 if (task.mangaId && task.chapterNumber) {
                     await MemoryService.markChapterAsPublished(task.mangaId, task.chapterNumber, postId);
+                    // Automatically generate/update compilation posts in the background!
+                    try {
+                        await this.createMangaCompilationPost(task.mangaId, task.adminFbId);
+                    } catch (compErr) {
+                        logger.error(`[Queue] Auto-compilation failed: ${compErr.message}`);
+                    }
                 }
 
                 if (task.adminFbId) {

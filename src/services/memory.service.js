@@ -58,21 +58,38 @@ export class MemoryService {
         }
     }
 
-    static async getMangaById(mangaId) {
+     static async getMangaById(mangaId) {
         try {
-            return await Manga.findById(mangaId);
+            let manga = null;
+            // Only try findById if it looks like a valid 24-character hex ObjectId
+            if (mangaId && mangaId.toString().match(/^[0-9a-fA-F]{24}$/)) {
+                manga = await Manga.findById(mangaId);
+            }
+            if (!manga) {
+                manga = await Manga.findOne({ slug: mangaId });
+            }
+            return manga;
         } catch (error) {
             logger.warn(`[AI Studio] Mongoose findById failed: ${error.message}. Falling back to persistent local JSON DB.`);
-            return db.data.manga.find(m => m.id === mangaId || m._id === mangaId);
+            const mIdStr = mangaId ? mangaId.toString() : '';
+            return db.data.manga.find(m => m.id === mangaId || m._id === mangaId || m.slug === mIdStr || m.id === mIdStr || m._id === mIdStr);
         }
     }
 
     static async updateMangaCompilationPost(mangaId, postId) {
         try {
-            return await Manga.findByIdAndUpdate(mangaId, { compilation_post_id: postId }, { new: true });
+            let manga = null;
+            if (mangaId && mangaId.toString().match(/^[0-9a-fA-F]{24}$/)) {
+                manga = await Manga.findByIdAndUpdate(mangaId, { compilation_post_id: postId }, { new: true });
+            }
+            if (!manga) {
+                manga = await Manga.findOneAndUpdate({ slug: mangaId }, { compilation_post_id: postId }, { new: true });
+            }
+            return manga;
         } catch (error) {
             logger.warn(`[AI Studio] Mongoose findByIdAndUpdate failed: ${error.message}. Falling back to persistent local JSON DB.`);
-            const manga = db.data.manga.find(m => m.id === mangaId || m._id === mangaId);
+            const mIdStr = mangaId ? mangaId.toString() : '';
+            const manga = db.data.manga.find(m => m.id === mangaId || m._id === mangaId || m.slug === mIdStr || m.id === mIdStr || m._id === mIdStr);
             if (manga) {
                 manga.compilation_post_id = postId;
                 db.save();
@@ -121,11 +138,20 @@ export class MemoryService {
 
     static async getPublishedChapters(mangaId) {
         try {
-            return await Chapter.find({ manga_id: mangaId, is_published: true }).sort({ chapter_number: 1 });
+            const mIdStr = mangaId ? mangaId.toString() : '';
+            const chapters = await Chapter.find({ 
+                $or: [
+                    { manga_id: mangaId },
+                    { manga_id: mIdStr }
+                ], 
+                is_published: true 
+            }).sort({ chapter_number: 1 });
+            return chapters;
         } catch (error) {
             logger.warn(`[AI Studio] Mongoose find failed: ${error.message}. Falling back to persistent local JSON DB.`);
+            const mIdStr = mangaId ? mangaId.toString() : '';
             return db.data.chapters
-                .filter(ch => ch.manga_id === mangaId && ch.is_published)
+                .filter(ch => ch.manga_id && ch.manga_id.toString() === mIdStr && ch.is_published)
                 .sort((a, b) => a.chapter_number - b.chapter_number);
         }
     }
